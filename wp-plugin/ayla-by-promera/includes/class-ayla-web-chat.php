@@ -39,19 +39,19 @@ class Ayla_Web_Chat {
 
 		$conversation = isset( $_POST['conversation_id'] ) ? absint( $_POST['conversation_id'] ) : 0;
 		if ( ! $conversation ) {
-			$start = Ayla_Client::request( 'POST', '/web-chat/start', array(), array( 'visitor_id' => $visitor ) );
+			$start = Ayla_Client::relay( 'POST', '/web-chat/start', array(), wp_json_encode( array( 'visitor_id' => $visitor ) ), array() );
 			if ( ! $start['ok'] || empty( $start['data']['conversation_id'] ) ) {
 				wp_send_json_error( array( 'message' => __( 'تعذر بدء المحادثة الآن.', 'ayla-by-promera' ) ), 503 );
 			}
 			$conversation = (int) $start['data']['conversation_id'];
 		}
 
-		$res = Ayla_Client::request( 'POST', '/web-chat/conversations/' . $conversation . '/messages', array(), array(
+		$res = Ayla_Client::relay( 'POST', '/web-chat/conversations/' . $conversation . '/messages', array(), wp_json_encode( array(
 			'visitor_id' => $visitor,
 			'message'    => $message,
 			'name'       => $name,
 			'phone'      => $phone,
-		) );
+		) ), array() );
 		if ( ! $res['ok'] ) {
 			wp_send_json_error( array( 'message' => __( 'تعذر إرسال الرسالة الآن.', 'ayla-by-promera' ) ), 503 );
 		}
