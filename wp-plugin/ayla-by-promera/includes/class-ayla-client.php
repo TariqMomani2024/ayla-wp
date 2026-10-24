@@ -114,8 +114,21 @@ class Ayla_Client {
 			false
 		);
 
-		if ( ! $res['ok'] || empty( $res['data']['token'] ) ) {
-			return $res['ok'] ? self::failure( 0, 'login_failed', Ayla_I18n::t( 'error_generic' ) ) : $res;
+		if ( ! $res['ok'] ) {
+			if ( 429 === $res['status'] ) {
+				return self::failure( 429, 'rate_limited', Ayla_I18n::t( 'rate_limited' ) );
+			}
+			if ( 'unauthorized' === $res['error']['code'] ) {
+				return self::failure( $res['status'], 'api_key_rejected', Ayla_I18n::t( 'api_key_rejected' ) );
+			}
+			if ( 'invalid_credentials' === $res['error']['code'] ) {
+				return self::failure( $res['status'], 'login_failed', Ayla_I18n::t( 'login_failed' ) );
+			}
+			return $res;
+		}
+
+		if ( empty( $res['data']['token'] ) ) {
+			return self::failure( 0, 'login_failed', Ayla_I18n::t( 'login_failed' ) );
 		}
 
 		$ttl = isset( $res['data']['expires_in'] ) ? max( 60, (int) $res['data']['expires_in'] - 300 ) : 3000;
