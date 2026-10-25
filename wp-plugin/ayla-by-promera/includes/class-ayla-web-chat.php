@@ -17,8 +17,11 @@ class Ayla_Web_Chat {
 			return;
 		}
 
-		wp_enqueue_style( 'ayla-web-chat', AYLA_PLUGIN_URL . 'assets/web-chat.css', array(), AYLA_VERSION );
-		wp_enqueue_script( 'ayla-web-chat', AYLA_PLUGIN_URL . 'assets/web-chat.js', array(), AYLA_VERSION, true );
+		$style_version  = filemtime( AYLA_PLUGIN_DIR . 'assets/web-chat.css' );
+		$script_version = filemtime( AYLA_PLUGIN_DIR . 'assets/web-chat.js' );
+
+		wp_enqueue_style( 'ayla-web-chat', AYLA_PLUGIN_URL . 'assets/web-chat.css', array(), $style_version );
+		wp_enqueue_script( 'ayla-web-chat', AYLA_PLUGIN_URL . 'assets/web-chat.js', array(), $script_version, true );
 		wp_localize_script( 'ayla-web-chat', 'AylaWebChat', array(
 			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 			'nonce'   => wp_create_nonce( 'ayla_web_chat' ),
