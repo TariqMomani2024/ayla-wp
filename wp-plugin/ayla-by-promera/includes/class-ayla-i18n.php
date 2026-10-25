@@ -61,6 +61,7 @@ class Ayla_I18n {
 			'login_failed'        => array( 'en' => 'Login to Ayla failed. Check the username and password in Ayla Settings.', 'ar' => 'فشل تسجيل الدخول إلى Ayla. تحقق من اسم المستخدم وكلمة المرور في الإعدادات.' ),
 			'api_key_rejected'    => array( 'en' => 'Ayla rejected the API key or domain. Check both in Ayla Settings.', 'ar' => 'رفضت Ayla مفتاح API أو النطاق. تحقق منهما في الإعدادات.' ),
 			'rate_limited'        => array( 'en' => 'Too many login attempts. Wait one minute and try again.', 'ar' => 'محاولات تسجيل دخول كثيرة. انتظر دقيقة ثم حاول مجدداً.' ),
+			'password_special_chars' => array( 'en' => 'Special characters are supported.', 'ar' => 'الرموز الخاصة مدعومة.' ),
 			'forbidden'           => array( 'en' => 'You do not have permission to do this.', 'ar' => 'ليست لديك صلاحية لهذا الإجراء.' ),
 			'tab_overview'        => array( 'en' => 'Overview', 'ar' => 'نظرة عامة' ),
 			'tab_leads'           => array( 'en' => 'Prospects', 'ar' => 'العملاء المحتملون' ),

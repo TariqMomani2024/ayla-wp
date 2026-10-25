@@ -23,6 +23,7 @@ class Ayla_Web_Chat {
 			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 			'nonce'   => wp_create_nonce( 'ayla_web_chat' ),
 			'title'   => __( 'المساعد الذكي', 'ayla-by-promera' ),
+			'logoUrl' => AYLA_PLUGIN_URL . 'assets/ayla-logo.png',
 		) );
 	}
 

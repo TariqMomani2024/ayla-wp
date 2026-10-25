@@ -112,7 +112,11 @@ class Ayla_Admin {
 
 		self::row( 'domain', Ayla_I18n::t( 'domain' ), 'text', $domain, '' );
 		self::row( 'username', Ayla_I18n::t( 'username' ), 'text', $s['username'], '' );
-		self::row( 'password', Ayla_I18n::t( 'password' ), 'password', '', '' !== $s['password'] ? Ayla_I18n::t( 'keep_saved' ) : '' );
+		$password_hint = Ayla_I18n::t( 'password_special_chars' );
+		if ( '' !== $s['password'] ) {
+			$password_hint .= ' ' . Ayla_I18n::t( 'keep_saved' );
+		}
+		self::row( 'password', Ayla_I18n::t( 'password' ), 'password', '', $password_hint );
 		self::row( 'api_key', Ayla_I18n::t( 'api_key' ), 'password', '', '' !== $s['api_key'] ? Ayla_I18n::t( 'keep_saved' ) : '' );
 
 		echo '</table>';

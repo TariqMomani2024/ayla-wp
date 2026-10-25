@@ -88,7 +88,10 @@
 
 	function renderShell() {
 		var a = state.account;
-		var tabs = [['overview', 'tab_overview'], ['leads', 'tab_leads'], ['appointments', 'tab_appointments'], ['conversations', 'tab_conversations'], ['doctors', 'tab_doctors'], ['business', 'tab_business']];
+		var tabs = [['overview', 'tab_overview'], ['leads', 'tab_leads'], ['conversations', 'tab_conversations']];
+		if (a.category && (a.category.wp_modules || []).indexOf('appointments') !== -1) { tabs.splice(2, 0, ['appointments', 'tab_appointments']); }
+		if (a.category && (a.category.wp_modules || []).indexOf('specialists') !== -1) { tabs.push(['doctors', 'tab_doctors']); }
+		tabs.push(['business', 'tab_business']);
 		var nav = tabs.map(function (x) { return '<a href="#" class="nav-tab" data-tab="' + x[0] + '">' + esc(t(x[1])) + '</a>'; }).join('');
 		var sub = a.expires_at ? '<span class="ayla-sub">' + esc(t('subscription')) + ': ' + esc(t('expires_on')) + ' ' + esc(a.expires_at) + (a.days_left !== null ? ' (' + esc(a.days_left) + ' ' + esc(t('days_left')) + ')' : '') + '</span>' : '';
 		root.innerHTML = '<div class="ayla-top"><strong>' + esc(a.name) + '</strong> ' + sub + '</div><h2 class="nav-tab-wrapper">' + nav + '</h2><div id="ayla-view"></div>';
@@ -308,13 +311,12 @@
 		api('account', 'GET').then(function (res) {
 			if (!res.ok) { return fail(view, res); }
 			var a = res.data;
-			var c = a.clinic || {};
+			var fields = (a.category && a.category.field_schema) || [];
+			var businessFields = fields.map(function (spec) { return businessField(spec, (a.business || {})[spec.key]); }).join('');
 			view.innerHTML =
-				'<div class="ayla-card"><h3>' + esc(t('clinic_info')) + '</h3>' +
-				field('b-address', t('address'), c.address) + field('b-phone', t('phone'), c.phone) + field('b-email', t('email'), c.email) +
-				field('b-map', t('map_url'), c.map_url) +
-				'<p><label>' + esc(t('about')) + '<br><textarea id="b-about" rows="3" class="large-text">' + esc(c.about || '') + '</textarea></label></p>' +
-				field('b-staff', t('staff_number'), a.staff_alert_number) + field('b-emerg', t('emergency_contact'), a.emergency_contact) +
+				'<div class="ayla-card"><h3>' + esc((a.category && a.category.name) || t('clinic_info')) + '</h3>' +
+				businessFields + field('b-staff', t('staff_number'), a.staff_alert_number) +
+				((a.category && (a.category.wp_modules || []).indexOf('emergency') !== -1) ? field('b-emerg', t('emergency_contact'), a.emergency_contact) : '') +
 				'<p><label>' + esc(t('days_off')) + '<br><textarea id="b-off" rows="3" class="large-text" dir="ltr">' + esc((a.days_off || []).join('\n')) + '</textarea></label></p>' +
 				'<h4>' + esc(t('working_hours')) + '</h4>' + hoursEditor('b', a.hours) +
 				'<p><button class="button button-primary" id="b-save">' + esc(t('save')) + '</button></p></div>' +
@@ -322,9 +324,11 @@
 
 			el('b-save').addEventListener('click', function () {
 				var off = el('b-off').value.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+				var business = {};
+				fields.forEach(function (spec) { business[spec.key] = el('b-field-' + spec.key).value; });
 				api('account', 'PUT', {
-					clinic: { address: el('b-address').value, phone: el('b-phone').value, email: el('b-email').value, map_url: el('b-map').value, about: el('b-about').value },
-					staff_alert_number: el('b-staff').value, emergency_contact: el('b-emerg').value,
+					business: business, staff_alert_number: el('b-staff').value,
+					emergency_contact: el('b-emerg') ? el('b-emerg').value : '',
 					days_off: off, hours: readHours(view, 'b')
 				}).then(function (r) {
 					notice(view, r.ok ? t('saved') : ((r.error && r.error.message) || t('error_generic')), r.ok ? 'success' : 'error');
@@ -338,6 +342,15 @@
 
 	function field(id, label, value) {
 		return '<p><label>' + esc(label) + '<br><input type="text" id="' + id + '" class="regular-text" value="' + esc(value || '') + '"></label></p>';
+	}
+
+	function businessField(spec, value) {
+		var type = ['text', 'email', 'tel', 'url', 'textarea'].indexOf(spec.type) !== -1 ? spec.type : 'text';
+		var id = 'b-field-' + spec.key;
+		if (type === 'textarea') {
+			return '<p><label>' + esc(spec.label) + '<br><textarea id="' + esc(id) + '" rows="3" class="large-text">' + esc(value || '') + '</textarea></label></p>';
+		}
+		return '<p><label>' + esc(spec.label) + '<br><input type="' + esc(type) + '" id="' + esc(id) + '" class="regular-text" value="' + esc(value || '') + '"></label></p>';
 	}
 
 	function listServices(locked) {
