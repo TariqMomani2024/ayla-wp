@@ -31,6 +31,25 @@
 
 	function el(id) { return document.getElementById(id); }
 
+	function inline(text) { return esc(text).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'); }
+
+	/* Text is escaped first, so only the markers below can ever become markup. */
+	function rich(text) {
+		var out = [], list = [];
+		function flush() { if (list.length) { out.push('<ul class="ayla-list">' + list.join('') + '</ul>'); list = []; } }
+		String(text || '').split('\n').forEach(function (line) {
+			var bullet = /^\s*[\u2022*-]\s+(.+)$/.exec(line);
+			if (bullet) { list.push('<li>' + inline(bullet[1]) + '</li>'); return; }
+			flush();
+			if (/^\s*\d+[).]\s+/.test(line)) { out.push('<div class="ayla-opt">' + inline(line.trim()) + '</div>'); return; }
+			if (line.trim()) { out.push('<div>' + inline(line) + '</div>'); }
+		});
+		flush();
+		return out.join('');
+	}
+
+	function plain(text) { return String(text || '').replace(/\*\*/g, '').replace(/^\s*[\u2022*-]\s+/gm, '').replace(/\s*\n+\s*/g, ' '); }
+
 	function notice(root, message, type) {
 		var box = document.createElement('div');
 		box.className = 'notice notice-' + (type || 'error') + ' is-dismissible ayla-notice';
@@ -89,7 +108,8 @@
 	function renderShell() {
 		var a = state.account;
 		var tabs = [['overview', 'tab_overview'], ['leads', 'tab_leads'], ['conversations', 'tab_conversations']];
-		if (a.category && (a.category.wp_modules || []).indexOf('appointments') !== -1) { tabs.splice(2, 0, ['appointments', 'tab_appointments']); }
+		// With the clinic's own booking add-on, appointments are managed there (calendar and each doctor's page).
+		if (!D.integrated && a.category && (a.category.wp_modules || []).indexOf('appointments') !== -1) { tabs.splice(2, 0, ['appointments', 'tab_appointments']); }
 		if (a.category && (a.category.wp_modules || []).indexOf('specialists') !== -1) { tabs.push(['doctors', 'tab_doctors']); }
 		tabs.push(['business', 'tab_business']);
 		var nav = tabs.map(function (x) { return '<a href="#" class="nav-tab" data-tab="' + x[0] + '">' + esc(t(x[1])) + '</a>'; }).join('');
@@ -162,7 +182,7 @@
 		api('leads', 'GET', null, { page: page || 1 }).then(function (res) {
 			if (!res.ok) { return fail(view, res); }
 			var rows = res.data.items.map(function (l) {
-				return '<tr><td>' + esc(l.name || '-') + '</td><td dir="ltr">+' + esc(l.phone) + '</td><td>' + esc(l.lead_score) + '</td><td>' + esc(l.status) + '</td><td>' + esc(l.last_message || '') + '</td></tr>';
+				return '<tr><td>' + esc(l.name || '-') + '</td><td dir="ltr">+' + esc(l.phone) + '</td><td>' + esc(l.lead_score) + '</td><td>' + esc(l.status) + '</td><td>' + esc(plain(l.last_message)) + '</td></tr>';
 			});
 			view.innerHTML = table([t('name'), t('phone'), t('score'), t('status'), t('last_message')], rows) + pager(res.data, 'leads');
 			bindPager(view, function (p) { leads(view, p); });
@@ -193,7 +213,7 @@
 			if (!res.ok) { return fail(view, res); }
 			var rows = res.data.items.map(function (c) {
 				var badge = c.needs_human ? ' <span class="ayla-badge">' + esc(t('needs_human')) + '</span>' : '';
-				return '<tr><td>' + esc(c.patient || '-') + badge + '</td><td dir="ltr">+' + esc(c.phone) + '</td><td>' + esc(c.last_message || '') + '</td><td><button class="button" data-open="' + c.id + '">' + esc(t('open')) + '</button></td></tr>';
+				return '<tr><td>' + esc(c.patient || '-') + badge + '</td><td dir="ltr">+' + esc(c.phone) + '</td><td>' + esc(plain(c.last_message)) + '</td><td><button class="button" data-open="' + c.id + '">' + esc(t('open')) + '</button></td></tr>';
 			});
 			view.innerHTML = table([t('patient'), t('phone'), t('last_message'), ''], rows) + pager(res.data, 'conversations');
 			bindPager(view, function (p) { conversations(view, p); });
@@ -207,7 +227,7 @@
 		api('conversations/' + id + '/messages', 'GET').then(function (res) {
 			if (!res.ok) { return fail(view, res); }
 			var msgs = res.data.map(function (m) {
-				return '<div class="ayla-msg ' + (m.direction === 'in' ? 'in' : 'out') + '">' + esc(m.body) + '<small>' + esc((m.at || '').replace('T', ' ').slice(0, 16)) + '</small></div>';
+				return '<div class="ayla-msg ' + (m.direction === 'in' ? 'in' : 'out') + '">' + rich(m.body) + '<small>' + esc((m.at || '').replace('T', ' ').slice(0, 16)) + '</small></div>';
 			}).join('');
 			view.innerHTML = '<p><button class="button" id="ayla-back">' + esc(t('back')) + '</button> <button class="button button-primary" id="ayla-resume">' + esc(t('resume_ayla')) + '</button></p><div class="ayla-thread">' + (msgs || '<p class="ayla-empty">' + esc(t('empty')) + '</p>') + '</div>';
 			el('ayla-back').addEventListener('click', function () { show('conversations'); });

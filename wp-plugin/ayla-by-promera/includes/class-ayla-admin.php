@@ -27,6 +27,7 @@ class Ayla_Admin {
 	public static function register() {
 		add_action( 'admin_menu', array( __CLASS__, 'menu' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'assets' ) );
+		add_filter( 'admin_body_class', array( __CLASS__, 'body_class' ) );
 		add_action( 'admin_post_ayla_save_settings', array( __CLASS__, 'save_settings' ) );
 		add_action( 'wp_ajax_ayla_proxy', array( __CLASS__, 'proxy' ) );
 	}
@@ -50,6 +51,12 @@ class Ayla_Admin {
 			return;
 		}
 
+		if ( function_exists( 'dentacare_admin_identity_css' ) ) {
+			$file = get_template_directory() . '/assets/css/admin.css';
+			wp_enqueue_style( 'ayla-dentacare-identity', get_template_directory_uri() . '/assets/css/admin.css', array(), (string) filemtime( $file ) );
+			wp_add_inline_style( 'ayla-dentacare-identity', dentacare_admin_identity_css() );
+		}
+
 		wp_enqueue_style( 'ayla-admin', AYLA_PLUGIN_URL . 'assets/admin.css', array(), AYLA_VERSION );
 		wp_enqueue_script( 'ayla-admin', AYLA_PLUGIN_URL . 'assets/admin.js', array(), AYLA_VERSION, true );
 
@@ -60,11 +67,18 @@ class Ayla_Admin {
 				'ajaxUrl'    => admin_url( 'admin-ajax.php' ),
 				'nonce'      => wp_create_nonce( 'ayla_proxy' ),
 				'configured' => Ayla_Settings::is_configured(),
+				'integrated' => Ayla_Bridge::available(),
 				'rtl'        => Ayla_I18n::is_rtl(),
 				'page'       => isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '', // phpcs:ignore WordPress.Security.NonceVerification
 				'i18n'       => Ayla_I18n::for_js(),
 			)
 		);
+	}
+
+	public static function body_class( $classes ) {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+
+		return $screen && false !== strpos( (string) $screen->id, self::SLUG ) ? $classes . ' dc-screen ayla-screen' : $classes;
 	}
 
 	public static function render_app() {
@@ -130,7 +144,51 @@ class Ayla_Admin {
 		echo '<p id="ayla-status" data-view="status">' . esc_html( Ayla_I18n::t( 'checking' ) ) . '</p>';
 		echo '</div>';
 
+		self::render_site_learning();
+
 		echo '</div>';
+	}
+
+	private static function render_site_learning() {
+		if ( ! Ayla_Settings::is_configured() ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification
+		if ( isset( $_GET['synced'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification
+			$ok = '1' === (string) $_GET['synced'];
+			echo '<div class="notice ' . ( $ok ? 'notice-success' : 'notice-error' ) . ' is-dismissible"><p>' . esc_html( Ayla_I18n::t( $ok ? 'site_sync_ok' : 'site_sync_failed' ) ) . '</p></div>';
+		}
+
+		echo '<div class="ayla-card"><h2>' . esc_html( Ayla_I18n::t( 'site_learning' ) ) . '</h2>';
+
+		if ( ! Ayla_Site_Sync::available() ) {
+			echo '<p>' . esc_html( Ayla_I18n::t( 'site_theme_required' ) ) . '</p></div>';
+			return;
+		}
+
+		$st = Ayla_Site_Sync::status();
+		echo '<p>' . esc_html( Ayla_I18n::t( 'site_learning_help' ) ) . '</p>';
+		echo '<p><strong>' . esc_html( Ayla_I18n::t( 'site_last_sync' ) ) . ':</strong> ';
+		echo $st['at'] ? esc_html( wp_date( 'Y-m-d H:i', $st['at'] ) ) : esc_html( Ayla_I18n::t( 'site_never' ) );
+		echo '</p>';
+
+		if ( $st['at'] && ! $st['ok'] && '' !== $st['error'] ) {
+			echo '<p class="notice notice-error inline"><span>' . esc_html( $st['error'] ) . '</span></p>';
+		} elseif ( $st['at'] && $st['counts'] ) {
+			$c = $st['counts'];
+			echo '<p>' . esc_html( Ayla_I18n::t( 'site_counts' ) ) . ': ' . (int) $c['branches'] . ' / ' . (int) $c['services'] . ' / ' . (int) $c['doctors'] . ' / ' . (int) $c['faqs'] . ' / ' . (int) $c['knowledge'] . '</p>';
+			if ( $st['over_limit'] > 0 ) {
+				echo '<p class="notice notice-warning inline"><span>' . esc_html( sprintf( Ayla_I18n::t( 'site_over_limit' ), (int) $st['over_limit'] ) ) . '</span></p>';
+			}
+		}
+
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		echo '<input type="hidden" name="action" value="ayla_sync_site">';
+		wp_nonce_field( 'ayla_sync_site' );
+		submit_button( Ayla_I18n::t( 'site_sync_now' ), 'secondary', 'submit', false );
+		echo '</form></div>';
 	}
 
 	private static function row( $name, $label, $type, $value, $hint ) {

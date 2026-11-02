@@ -32,7 +32,12 @@ class Ayla_Client {
 		return self::send( $method, $path, $query, $raw_body, $extra_headers, false );
 	}
 
-	private static function send( $method, $path, array $query, $body, array $extra_headers, $with_session ) {
+	/** Site calls (content sync, bookings from the website) are server to server: API key only, no dashboard session. */
+	public static function site( $method, $path, array $query = array(), $payload = null, $timeout = 45 ) {
+		return self::send( $method, '/site' . $path, $query, null === $payload ? null : wp_json_encode( $payload ), array(), false, $timeout );
+	}
+
+	private static function send( $method, $path, array $query, $body, array $extra_headers, $with_session, $timeout = 20 ) {
 		$settings = Ayla_Settings::get();
 
 		if ( ! Ayla_Settings::is_configured() ) {
@@ -64,7 +69,7 @@ class Ayla_Client {
 			$url,
 			array(
 				'method'      => $method,
-				'timeout'     => 20,
+				'timeout'     => (int) $timeout,
 				'redirection' => 0,
 				'headers'     => array_merge( $headers, $extra_headers ),
 				'body'        => $body,
