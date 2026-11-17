@@ -142,11 +142,10 @@ class Ayla_Web_Chat {
 		$conversation = isset( $_POST['conversation_id'] ) ? absint( $_POST['conversation_id'] ) : 0;
 
 		if ( ! $conversation ) {
-			$start = Ayla_Client::relay( 'POST', '/web-chat/start', array(), wp_json_encode( array( 'visitor_id' => $visitor ) ), array() );
-			if ( ! $start['ok'] || empty( $start['data']['conversation_id'] ) ) {
+			$conversation = self::start( $visitor );
+			if ( ! $conversation ) {
 				wp_send_json_error( array( 'message' => __( 'تعذر بدء المحادثة الآن.', 'ayla-by-promyra' ) ), 503 );
 			}
-			$conversation = (int) $start['data']['conversation_id'];
 		}
 
 		// The assistant can take a while (model calls, booking). A shorter wait here would show the visitor an error
@@ -155,15 +154,37 @@ class Ayla_Web_Chat {
 			@set_time_limit( 70 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- hosts may disable it.
 		}
 
-		$res = Ayla_Client::relay( 'POST', '/web-chat/conversations/' . $conversation . '/messages', array(), wp_json_encode( array(
-			'visitor_id' => $visitor,
-			'message'    => $message,
-		) ), array(), 60 );
+		$send = static function ( $conversation_id ) use ( $visitor, $message ) {
+			return Ayla_Client::relay( 'POST', '/web-chat/conversations/' . $conversation_id . '/messages', array(), wp_json_encode( array(
+				'visitor_id' => $visitor,
+				'message'    => $message,
+			) ), array(), 60 );
+		};
+
+		$res = $send( $conversation );
+
+		// The visitor's browser remembers a conversation id for weeks. If the service no longer has that
+		// conversation (old, or cleaned up), start a new one and carry on instead of failing for ever.
+		if ( ! $res['ok'] && 404 === (int) $res['status'] ) {
+			$fresh = self::start( $visitor );
+			if ( $fresh ) {
+				$conversation = $fresh;
+				$res          = $send( $conversation );
+			}
+		}
+
 		if ( ! $res['ok'] ) {
 			error_log( 'Ayla web chat message failed: HTTP ' . (int) $res['status'] . ' (' . sanitize_key( (string) $res['error']['code'] ) . ')' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			wp_send_json_error( array( 'message' => __( 'تعذر إرسال الرسالة الآن.', 'ayla-by-promyra' ) ), 503 );
 		}
 
 		wp_send_json_success( array_merge( $res['data'], array( 'conversation_id' => $conversation ) ) );
+	}
+
+	/** Starts (or finds the open) conversation of this visitor. @return int 0 when the service did not answer */
+	private static function start( $visitor ) {
+		$start = Ayla_Client::relay( 'POST', '/web-chat/start', array(), wp_json_encode( array( 'visitor_id' => $visitor ) ), array() );
+
+		return $start['ok'] && ! empty( $start['data']['conversation_id'] ) ? (int) $start['data']['conversation_id'] : 0;
 	}
 }

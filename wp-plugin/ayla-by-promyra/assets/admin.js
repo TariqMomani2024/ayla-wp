@@ -109,7 +109,9 @@
 		var a = state.account;
 		var tabs = [['overview', 'tab_overview'], ['leads', 'tab_leads'], ['conversations', 'tab_conversations']];
 		// With the clinic's own booking add-on, appointments are managed there (calendar and each doctor's page).
-		if (!D.integrated && a.category && (a.category.wp_modules || []).indexOf('appointments') !== -1) { tabs.splice(2, 0, ['appointments', 'tab_appointments']); }
+		// Without any booking system the customer asks for a meeting and the team confirms it, so the tab lists requests.
+		var modules = (a.category && a.category.wp_modules) || [];
+		if (!D.integrated && modules.indexOf('appointments') !== -1) { tabs.splice(2, 0, ['appointments', modules.indexOf('specialists') === -1 ? 'tab_requests' : 'tab_appointments']); }
 		if (a.category && (a.category.wp_modules || []).indexOf('specialists') !== -1) { tabs.push(['doctors', 'tab_doctors']); }
 		tabs.push(['business', 'tab_business']);
 		var nav = tabs.map(function (x) { return '<a href="#" class="nav-tab" data-tab="' + x[0] + '">' + esc(t(x[1])) + '</a>'; }).join('');
@@ -189,14 +191,101 @@
 		});
 	}
 
-	function appointments(view, page) {
+	function appointments(view, page, flash) {
 		api('appointments', 'GET', null, { page: page || 1, order: 'desc' }).then(function (res) {
 			if (!res.ok) { return fail(view, res); }
+
+			if (res.data.mode === 'meetings') {
+				meetingsView(view, res.data, page || 1);
+				if (flash) { notice(view, flash.text, flash.type); }
+				return;
+			}
+
+			if (res.data.mode === 'requests') {
+				var requests = res.data.items.map(function (r) {
+					var phone = /^web-/.test(r.phone || '') ? '-' : '+' + (r.phone || '');
+					return '<tr><td>' + esc(r.date) + '<br>' + esc(r.time) + '</td><td>' + esc(r.patient || '-') + '</td><td dir="ltr">' + esc(phone) + '<br>' + esc(r.email || '') + '</td><td>' + esc(plain(r.details)) + '</td></tr>';
+				});
+				view.innerHTML = '<p class="ayla-sub">' + esc(t('requests_help')) + '</p>' +
+					table([t('date'), t('patient'), t('phone'), t('details')], requests) + pager(res.data, 'appointments');
+				bindPager(view, function (p) { appointments(view, p); });
+				return;
+			}
+
 			var rows = res.data.items.map(function (a) {
 				return '<tr><td>' + esc(a.date) + '</td><td>' + esc(a.time) + '</td><td>' + esc(a.patient || '-') + '</td><td>' + esc(a.doctor || '-') + '</td><td>' + esc(a.service || '-') + '</td><td>' + esc(a.status) + '</td></tr>';
 			});
 			view.innerHTML = table([t('date'), t('time'), t('patient'), t('doctor'), t('service'), t('status')], rows) + pager(res.data, 'appointments');
 			bindPager(view, function (p) { appointments(view, p); });
+		});
+	}
+
+	/* Meetings of a business without specialists: the team sees the day and time, can move a meeting, and confirms it (which emails the customer). */
+	function meetingsView(view, data, page) {
+		var rows = data.items.map(function (m) {
+			var phone = /^web-/.test(m.phone || '') ? '-' : '+' + (m.phone || '');
+			var actions = m.status === 'cancelled' ? '' :
+				'<button class="button" data-medit="' + m.id + '">' + esc(t('edit')) + '</button> ' +
+				'<button class="button button-primary" data-mconfirm="' + m.id + '">' + esc(m.status === 'confirmed' ? t('resend_confirmation') : t('confirm')) + '</button> ' +
+				'<button class="button" data-mcancel="' + m.id + '">' + esc(t('cancel_meeting')) + '</button>';
+			var status = '<span class="ayla-badge">' + esc(t('status_' + m.status)) + '</span>' + (m.emailed_at ? '<br><span class="ayla-sub">' + esc(t('email_sent')) + '</span>' : '');
+
+			return '<tr><td>' + esc(m.weekday ? t(m.weekday.slice(0, 3).toLowerCase()) : '') + ' ' + esc(m.date) + '<br><strong>' + esc(m.time) + '</strong> <span class="ayla-sub">(' + esc(m.minutes) + ' ' + esc(t('minutes')) + ')</span></td>' +
+				'<td>' + esc(m.patient || '-') + '</td><td dir="ltr">' + esc(phone) + '<br>' + esc(m.email || '') + '</td><td>' + status + '</td><td>' + actions + '</td></tr>' +
+				'<tr class="ayla-medit" id="medit-' + m.id + '" hidden><td colspan="5">' +
+				'<label>' + esc(t('date')) + ' <input type="date" id="medit-date-' + m.id + '" value="' + esc(m.date) + '"></label> ' +
+				'<label>' + esc(t('time')) + ' <input type="time" id="medit-time-' + m.id + '" value="' + esc(m.time) + '" step="300"></label> ' +
+				'<button class="button button-primary" data-msave="' + m.id + '">' + esc(t('save')) + '</button> <button class="button" data-mclose="' + m.id + '">' + esc(t('cancel')) + '</button>' +
+				'<p class="ayla-sub">' + esc(t('edit_meeting_help')) + '</p></td></tr>';
+		});
+
+		var older = (data.requests || []).map(function (r) {
+			var phone = /^web-/.test(r.phone || '') ? '-' : '+' + (r.phone || '');
+			return '<tr><td>' + esc(r.date) + '<br>' + esc(r.time) + '</td><td>' + esc(r.patient || '-') + '</td><td dir="ltr">' + esc(phone) + '<br>' + esc(r.email || '') + '</td><td>' + esc(plain(r.details)) + '</td></tr>';
+		});
+
+		view.innerHTML = '<p class="ayla-sub">' + esc(t('meetings_help')) + '</p>' +
+			table([t('date'), t('patient'), t('phone'), t('status'), ''], rows) + pager(data, 'appointments') +
+			(older.length ? '<h3>' + esc(t('other_requests')) + '</h3>' + table([t('date'), t('patient'), t('phone'), t('details')], older) : '');
+		bindPager(view, function (p) { appointments(view, p); });
+
+		var reload = function (text, type) { appointments(view, page, text ? { text: text, type: type || 'success' } : null); };
+		var failed = function (r) { notice(view, (r.error && r.error.message) || t('error_generic')); };
+		var byId = function (id) { return data.items.filter(function (m) { return m.id === parseInt(id, 10); })[0]; };
+
+		Array.prototype.forEach.call(view.querySelectorAll('[data-medit]'), function (b) {
+			b.addEventListener('click', function () { el('medit-' + b.getAttribute('data-medit')).hidden = false; });
+		});
+		Array.prototype.forEach.call(view.querySelectorAll('[data-mclose]'), function (b) {
+			b.addEventListener('click', function () { el('medit-' + b.getAttribute('data-mclose')).hidden = true; });
+		});
+		Array.prototype.forEach.call(view.querySelectorAll('[data-msave]'), function (b) {
+			b.addEventListener('click', function () {
+				var id = b.getAttribute('data-msave');
+				api('appointments/' + id, 'PUT', { date: el('medit-date-' + id).value, time: el('medit-time-' + id).value }).then(function (r) {
+					if (r.ok) { reload(r.data.status === 'scheduled' ? t('meeting_moved') : t('meeting_saved')); } else { failed(r); }
+				});
+			});
+		});
+		Array.prototype.forEach.call(view.querySelectorAll('[data-mconfirm]'), function (b) {
+			b.addEventListener('click', function () {
+				var id = b.getAttribute('data-mconfirm'), m = byId(id) || {};
+				var ask = m.email ? t('confirm_meeting_ask').replace('%s', m.email) : t('confirm_no_email_ask');
+				if (!window.confirm(ask)) { return; }
+				b.disabled = true;
+				api('appointments/' + id + '/confirm', 'POST', {}).then(function (r) {
+					if (!r.ok) { b.disabled = false; return failed(r); }
+					reload(r.data.emailed ? t('meeting_confirmed') + ' ' + t('email_sent_to').replace('%s', r.data.email) : t('meeting_confirmed') + ' ' + t('no_email_sent'));
+				});
+			});
+		});
+		Array.prototype.forEach.call(view.querySelectorAll('[data-mcancel]'), function (b) {
+			b.addEventListener('click', function () {
+				if (!window.confirm(t('cancel_meeting_ask'))) { return; }
+				api('appointments/' + b.getAttribute('data-mcancel') + '/cancel', 'POST', {}).then(function (r) {
+					if (r.ok) { reload(t('meeting_cancelled')); } else { failed(r); }
+				});
+			});
 		});
 	}
 

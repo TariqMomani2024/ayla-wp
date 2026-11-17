@@ -179,10 +179,26 @@
         }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang', 'dir'] });
     }
 
-    function inline(parent, text) {
+    // Only plain http(s) links become clickable; everything else stays text. Punctuation that ends a sentence
+    // (including the Arabic comma and question mark) is not part of the link.
+    function linkify(parent, text) {
+        text.split(/(https?:\/\/[^\s<>"']+)/).forEach(function (part, i) {
+            if (i % 2 === 0) { if (part) { parent.appendChild(document.createTextNode(part)); } return; }
+            var url = part.replace(/[.,;:!?)\]}\u060C\u061B\u061F\u00BB\u201D]+$/, '');
+            var rest = part.slice(url.length);
+            var a = document.createElement('a');
+            a.className = 'ayla-chat__link';
+            a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+            a.textContent = url;
+            parent.appendChild(a);
+            if (rest) { parent.appendChild(document.createTextNode(rest)); }
+        });
+    }
+
+    function inline(parent, text, links) {
         text.split(/(\*\*[^*]+\*\*)/).forEach(function (part) {
             if (/^\*\*[^*]+\*\*$/.test(part)) { var strong = document.createElement('strong'); strong.textContent = part.slice(2, -2); parent.appendChild(strong); }
-            else if (part) { parent.appendChild(document.createTextNode(part)); }
+            else if (part) { if (links === false) { parent.appendChild(document.createTextNode(part)); } else { linkify(parent, part); } }
         });
     }
 
@@ -196,7 +212,7 @@
                 list = null;
                 var button = document.createElement('button');
                 button.type = 'button'; button.className = 'ayla-chat__choice';
-                inline(button, choice[1]);
+                inline(button, choice[1], false);
                 button.addEventListener('click', function () { if (!submit.disabled) { send(choice[1].replace(/\*\*/g, '')); } });
                 el.appendChild(button);
                 return;

@@ -16,6 +16,8 @@ class Ayla_Admin {
 			'#^dashboard/stats$#'                => array( 'GET' ),
 			'#^leads$#'                          => array( 'GET' ),
 			'#^appointments$#'                   => array( 'GET' ),
+			'#^appointments/\d+$#'               => array( 'PUT' ),
+			'#^appointments/\d+/(confirm|cancel)$#' => array( 'POST' ),
 			'#^conversations$#'                  => array( 'GET' ),
 			'#^conversations/\d+/messages$#'     => array( 'GET' ),
 			'#^conversations/\d+/resume$#'       => array( 'POST' ),
