@@ -291,8 +291,8 @@ The customer can edit only **business facts**, never agent behavior. Facts are s
 
 ## 11. WordPress Plugin Conventions
 
-- Location: `promera/ayla/wp-plugin/ayla-by-promera/`.
-- Plugin name shown to users: **Ayla by Promera**. Text domain: `ayla-by-promera`. Function/class/option prefix: `ayla_` / `Ayla_`. All strings are translatable (Arabic and English, RTL supported).
+- Location: `promera/ayla/wp-plugin/ayla-by-promyra/`.
+- Plugin name shown to users: **Ayla by Promyra Digital Solutions**. Text domain: `ayla-by-promyra`. Function/class/option prefix: `ayla_` / `Ayla_`. All strings are translatable (Arabic and English, RTL supported).
 - **Settings page** (Settings -> Ayla by Promera): fields `domain`, `username`, `password`, `api_key`. The password and key fields are masked and never echoed back into the HTML.
 - **All calls to Laravel are server-side (PHP) via `wp_remote_request`.** The browser never talks to tymzh.net and never receives the API key. UI JS calls the plugin's own WP endpoints (admin-ajax or WP REST) which proxy to Laravel.
 - The Laravel base URL is a single constant in one file. It is never printed in HTML, JS, errors, or settings.

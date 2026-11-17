@@ -5,9 +5,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Sends the clinic website's public content to Ayla: clinic details, branches, services, doctors,
- * FAQ, offers, pages and blog posts. The site owns this content; Ayla keeps a read copy.
- * Only runs with the DentaCare theme. No patient data and no drafts are read.
+ * Sends the website's public content to Ayla: business details, services, FAQ, offers, pages and
+ * blog posts. The site owns this content; Ayla keeps a read copy. Works on any WordPress site;
+ * when the DentaCare theme is present its richer data (branches, doctors, schedules) is read too.
+ * No personal data and no drafts are read.
  */
 class Ayla_Site_Sync {
 
@@ -28,7 +29,12 @@ class Ayla_Site_Sync {
 	}
 
 	public static function available() {
-		return function_exists( 'dentacare_opt' ) && Ayla_Settings::is_configured();
+		return Ayla_Settings::is_configured();
+	}
+
+	/** True when the DentaCare theme's data helpers exist on this site. */
+	public static function has_theme() {
+		return function_exists( 'dentacare_opt' );
 	}
 
 	/** Catches changes that fire no hook, such as doctor schedules kept in the booking tables. */
@@ -56,13 +62,16 @@ class Ayla_Site_Sync {
 		if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) || ! $post instanceof WP_Post ) {
 			return;
 		}
-		if ( in_array( $post->post_type, array( 'post', 'page', 'dc_treatment', 'dc_doctor', 'dc_faq', 'dc_branch', 'dc_offer' ), true ) ) {
+		$types = get_post_types( array( 'public' => true ), 'names' );
+		unset( $types['attachment'] );
+		if ( in_array( $post->post_type, $types, true ) || 'dc_faq' === $post->post_type ) {
 			self::queue();
 		}
 	}
 
 	public static function on_option( $option ) {
-		if ( 0 === strpos( (string) $option, 'dentacare_' ) ) {
+		$option = (string) $option;
+		if ( 0 === strpos( $option, 'dentacare_' ) || in_array( $option, array( 'blogname', 'blogdescription', 'admin_email' ), true ) ) {
 			self::queue();
 		}
 	}
@@ -193,6 +202,17 @@ class Ayla_Site_Sync {
 	}
 
 	private static function clinic() {
+		// Without the theme only safe, public basics are sent, and empty keys are left out so manual edits are kept.
+		if ( ! self::has_theme() ) {
+			$out   = array();
+			$about = self::plain( get_bloginfo( 'description' ), 2000 );
+			if ( '' !== $about ) {
+				$out['about'] = $about;
+			}
+
+			return $out;
+		}
+
 		$out = array(
 			'address' => self::plain( self::opt( 'address' ), 500 ),
 			'phone'   => self::plain( self::opt( 'phone' ), 64 ),
@@ -455,6 +475,30 @@ class Ayla_Site_Sync {
 		return array( '' );
 	}
 
+	/** @return array[] post type, knowledge type, id prefix, max items — pages, posts and every public custom type. */
+	private static function knowledge_sets() {
+		$sets = array(
+			array( 'post', 'post', '', 150 ),
+			array( 'page', 'page', '', 80 ),
+		);
+
+		if ( self::has_theme() ) {
+			$sets[] = array( 'dc_treatment', 'page', 't', 100 );
+			$sets[] = array( 'dc_doctor', 'page', 'd', 60 );
+		}
+
+		$skip  = array( 'post', 'page', 'attachment', 'dc_treatment', 'dc_doctor', 'dc_faq', 'dc_branch', 'dc_offer' );
+		$types = get_post_types( array( 'public' => true ), 'names' );
+		foreach ( $types as $type ) {
+			if ( in_array( $type, $skip, true ) ) {
+				continue;
+			}
+			$sets[] = array( $type, 'page', $type . '-', 60 );
+		}
+
+		return $sets;
+	}
+
 	private static function knowledge() {
 		$out = array();
 
@@ -464,13 +508,7 @@ class Ayla_Site_Sync {
 				$base['lang'] = $lang;
 			}
 
-			$sets = array(
-				array( 'post', 'post', '', 150 ),
-				array( 'page', 'page', '', 80 ),
-				array( 'dc_treatment', 'page', 't', 100 ),
-				array( 'dc_doctor', 'page', 'd', 60 ),
-			);
-			foreach ( $sets as $set ) {
+			foreach ( self::knowledge_sets() as $set ) {
 				$posts = get_posts( $base + array( 'post_type' => $set[0], 'numberposts' => $set[3], 'orderby' => 'date', 'order' => 'DESC' ) );
 				foreach ( $posts as $p ) {
 					$content = self::plain( $p->post_content, 20000 );

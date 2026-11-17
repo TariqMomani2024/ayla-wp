@@ -1,19 +1,19 @@
-﻿<?php
+<?php
 /**
- * Plugin Name:       Ayla by Promera
- * Description:       AI receptionist for clinics and businesses: replies on WhatsApp, books appointments and reminds patients.
- * Version:           1.4.1
+ * Plugin Name:       Ayla by Promyra Digital Solutions
+ * Description:       Your AI assistant: answers website visitors and WhatsApp messages, learns from your site, books appointments and follows up with customers.
+ * Version:           1.5.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
- * Author:            Promera
- * Text Domain:       ayla-by-promera
+ * Author:            Promyra Digital Solutions
+ * Text Domain:       ayla-by-promyra
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AYLA_VERSION', '1.4.1' );
+define( 'AYLA_VERSION', '1.5.2' );
 define( 'AYLA_PLUGIN_FILE', __FILE__ );
 define( 'AYLA_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AYLA_PLUGIN_URL', plugin_dir_url( __FILE__ ) );

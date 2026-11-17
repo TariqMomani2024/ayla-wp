@@ -61,10 +61,10 @@ class Ayla_Web_Chat {
 		$lang = self::language();
 		$copy = array(
 			'ar' => array(
-				'title' => 'المساعد الذكي', 'messageLabel' => 'كيف يمكنني مساعدتك؟', 'messagePlaceholder' => 'اكتب رسالتك...', 'send' => 'إرسال', 'genericError' => 'تعذر إرسال الرسالة الآن. يرجى المحاولة لاحقاً.', 'whatsapp' => 'التواصل عبر واتساب', 'chatHere' => 'المحادثة هنا', 'chooseTitle' => 'كيف تحب أن نتواصل؟', 'expand' => 'تكبير المحادثة', 'shrink' => 'تصغير المحادثة',
+				'title' => 'المساعد الذكي', 'online' => 'متصل الآن', 'messageLabel' => 'كيف يمكنني مساعدتك؟', 'messagePlaceholder' => 'اكتب رسالتك...', 'send' => 'إرسال', 'genericError' => 'تعذر إرسال الرسالة الآن. يرجى المحاولة لاحقاً.', 'whatsapp' => 'التواصل عبر واتساب', 'chatHere' => 'المحادثة هنا', 'chooseTitle' => 'كيف تحب أن نتواصل؟', 'expand' => 'تكبير المحادثة', 'shrink' => 'تصغير المحادثة', 'close' => 'إغلاق المحادثة',
 			),
 			'en' => array(
-				'title' => 'Smart assistant', 'messageLabel' => 'How can I help?', 'messagePlaceholder' => 'Write your message...', 'send' => 'Send', 'genericError' => 'Your message could not be sent. Please try again later.', 'whatsapp' => 'Continue on WhatsApp', 'chatHere' => 'Chat here', 'chooseTitle' => 'How would you like to continue?', 'expand' => 'Expand chat', 'shrink' => 'Shrink chat',
+				'title' => 'Smart assistant', 'online' => 'Online now', 'messageLabel' => 'How can I help?', 'messagePlaceholder' => 'Write your message...', 'send' => 'Send', 'genericError' => 'Your message could not be sent. Please try again later.', 'whatsapp' => 'Continue on WhatsApp', 'chatHere' => 'Chat here', 'chooseTitle' => 'How would you like to continue?', 'expand' => 'Expand chat', 'shrink' => 'Shrink chat', 'close' => 'Close chat',
 			),
 		);
 		wp_localize_script( 'ayla-web-chat', 'AylaWebChat', array(
@@ -72,7 +72,7 @@ class Ayla_Web_Chat {
 			'nonce'       => wp_create_nonce( 'ayla_web_chat' ),
 			'lang'        => $lang,
 			'i18n'        => $copy,
-			'logoUrl'     => AYLA_PLUGIN_URL . 'assets/ayla-logo.png',
+			'logoUrl'     => add_query_arg( 'v', (string) filemtime( AYLA_PLUGIN_DIR . 'assets/ayla-logo.png' ), AYLA_PLUGIN_URL . 'assets/ayla-logo.png' ),
 			'whatsappUrl' => self::whatsapp_url(),
 		) );
 	}
@@ -105,7 +105,7 @@ class Ayla_Web_Chat {
 		$res  = Ayla_Client::request( 'GET', '/account' );
 		$lang = $res['ok'] && isset( $res['data']['default_language'] ) ? strtolower( substr( (string) $res['data']['default_language'], 0, 2 ) ) : $fallback;
 		$lang = 'ar' === $lang ? 'ar' : 'en';
-		set_transient( 'ayla_web_chat_language', $lang, 6 * HOUR_IN_SECONDS );
+		set_transient( 'ayla_web_chat_language', $lang, $res['ok'] ? 6 * HOUR_IN_SECONDS : 5 * MINUTE_IN_SECONDS );
 
 		return $lang;
 	}
@@ -116,7 +116,7 @@ class Ayla_Web_Chat {
 		$message = isset( $_POST['message'] ) ? sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) : '';
 
 		if ( ! preg_match( '/^[0-9a-f-]{36}$/i', $visitor ) || '' === $message ) {
-			wp_send_json_error( array( 'message' => __( 'يرجى كتابة رسالة صحيحة.', 'ayla-by-promera' ) ), 422 );
+			wp_send_json_error( array( 'message' => __( 'يرجى كتابة رسالة صحيحة.', 'ayla-by-promyra' ) ), 422 );
 		}
 
 		$conversation = isset( $_POST['conversation_id'] ) ? absint( $_POST['conversation_id'] ) : 0;
@@ -124,18 +124,24 @@ class Ayla_Web_Chat {
 		if ( ! $conversation ) {
 			$start = Ayla_Client::relay( 'POST', '/web-chat/start', array(), wp_json_encode( array( 'visitor_id' => $visitor ) ), array() );
 			if ( ! $start['ok'] || empty( $start['data']['conversation_id'] ) ) {
-				wp_send_json_error( array( 'message' => __( 'تعذر بدء المحادثة الآن.', 'ayla-by-promera' ) ), 503 );
+				wp_send_json_error( array( 'message' => __( 'تعذر بدء المحادثة الآن.', 'ayla-by-promyra' ) ), 503 );
 			}
 			$conversation = (int) $start['data']['conversation_id'];
+		}
+
+		// The assistant can take a while (model calls, booking). A shorter wait here would show the visitor an error
+		// while the service is still working on the message, and a booking made in the meantime would go unnoticed.
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 70 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- hosts may disable it.
 		}
 
 		$res = Ayla_Client::relay( 'POST', '/web-chat/conversations/' . $conversation . '/messages', array(), wp_json_encode( array(
 			'visitor_id' => $visitor,
 			'message'    => $message,
-		) ), array() );
+		) ), array(), 60 );
 		if ( ! $res['ok'] ) {
 			error_log( 'Ayla web chat message failed: HTTP ' . (int) $res['status'] . ' (' . sanitize_key( (string) $res['error']['code'] ) . ')' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-			wp_send_json_error( array( 'message' => __( 'تعذر إرسال الرسالة الآن.', 'ayla-by-promera' ) ), 503 );
+			wp_send_json_error( array( 'message' => __( 'تعذر إرسال الرسالة الآن.', 'ayla-by-promyra' ) ), 503 );
 		}
 
 		wp_send_json_success( array_merge( $res['data'], array( 'conversation_id' => $conversation ) ) );

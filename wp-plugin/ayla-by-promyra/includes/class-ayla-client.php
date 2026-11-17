@@ -8,6 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Ayla_Client {
 
 	const TOKEN_TRANSIENT = 'ayla_session_token';
+	const LOGIN_BLOCK     = 'ayla_login_block';
 
 	/**
 	 * @param string      $method   GET|POST|PUT|DELETE
@@ -28,8 +29,8 @@ class Ayla_Client {
 	}
 
 	/** Relay requests carry the raw body untouched and need no dashboard session. */
-	public static function relay( $method, $path, array $query, $raw_body, array $extra_headers ) {
-		return self::send( $method, $path, $query, $raw_body, $extra_headers, false );
+	public static function relay( $method, $path, array $query, $raw_body, array $extra_headers, $timeout = 20 ) {
+		return self::send( $method, $path, $query, $raw_body, $extra_headers, false, $timeout );
 	}
 
 	/** Site calls (content sync, bookings from the website) are server to server: API key only, no dashboard session. */
@@ -104,6 +105,12 @@ class Ayla_Client {
 			return $token;
 		}
 
+		// A failed login is remembered briefly so page loads and dashboard calls don't hammer the login limit.
+		$blocked = get_transient( self::LOGIN_BLOCK );
+		if ( is_array( $blocked ) ) {
+			return $blocked;
+		}
+
 		$settings = Ayla_Settings::get();
 		$res      = self::send(
 			'POST',
@@ -121,13 +128,19 @@ class Ayla_Client {
 
 		if ( ! $res['ok'] ) {
 			if ( 429 === $res['status'] ) {
-				return self::failure( 429, 'rate_limited', Ayla_I18n::t( 'rate_limited' ) );
+				$failure = self::failure( 429, 'rate_limited', Ayla_I18n::t( 'rate_limited' ) );
+				set_transient( self::LOGIN_BLOCK, $failure, 90 );
+				return $failure;
 			}
-			if ( 'unauthorized' === $res['error']['code'] ) {
-				return self::failure( $res['status'], 'api_key_rejected', Ayla_I18n::t( 'api_key_rejected' ) );
+			if ( isset( $res['error']['code'] ) && 'unauthorized' === $res['error']['code'] ) {
+				$failure = self::failure( $res['status'], 'api_key_rejected', Ayla_I18n::t( 'api_key_rejected' ) );
+				set_transient( self::LOGIN_BLOCK, $failure, 60 );
+				return $failure;
 			}
-			if ( 'invalid_credentials' === $res['error']['code'] ) {
-				return self::failure( $res['status'], 'login_failed', Ayla_I18n::t( 'login_failed' ) );
+			if ( isset( $res['error']['code'] ) && 'invalid_credentials' === $res['error']['code'] ) {
+				$failure = self::failure( $res['status'], 'login_failed', Ayla_I18n::t( 'login_failed' ) );
+				set_transient( self::LOGIN_BLOCK, $failure, 60 );
+				return $failure;
 			}
 			return $res;
 		}

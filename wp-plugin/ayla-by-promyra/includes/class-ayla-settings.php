@@ -58,5 +58,6 @@ class Ayla_Settings {
 		);
 
 		delete_transient( Ayla_Client::TOKEN_TRANSIENT );
+		delete_transient( Ayla_Client::LOGIN_BLOCK );
 	}
 }

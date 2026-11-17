@@ -1,4 +1,4 @@
-/* Ayla by Promera: dashboard UI. Every number and list comes from the Ayla service via the PHP proxy. */
+/* Ayla by Promyra Digital Solutions: dashboard UI. Every number and list comes from the Ayla service via the PHP proxy. */
 (function () {
 	'use strict';
 

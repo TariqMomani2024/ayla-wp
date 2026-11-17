@@ -6,8 +6,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Ayla_Admin {
 
-	const SLUG          = 'ayla-by-promera';
-	const SETTINGS_SLUG = 'ayla-by-promera-settings';
+	const SLUG          = 'ayla-by-promyra';
+	const SETTINGS_SLUG = 'ayla-by-promyra-settings';
 
 	/** route pattern => allowed methods. Anything else is rejected by the proxy. */
 	private static function allowed_routes() {
@@ -162,11 +162,6 @@ class Ayla_Admin {
 		}
 
 		echo '<div class="ayla-card"><h2>' . esc_html( Ayla_I18n::t( 'site_learning' ) ) . '</h2>';
-
-		if ( ! Ayla_Site_Sync::available() ) {
-			echo '<p>' . esc_html( Ayla_I18n::t( 'site_theme_required' ) ) . '</p></div>';
-			return;
-		}
 
 		$st = Ayla_Site_Sync::status();
 		echo '<p>' . esc_html( Ayla_I18n::t( 'site_learning_help' ) ) . '</p>';
