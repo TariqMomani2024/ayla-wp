@@ -243,14 +243,51 @@
 
 	function hoursEditor(prefix, hours) {
 		hours = hours || {};
-		return ORDER.map(function (d) {
+		var rows = ORDER.map(function (d) {
 			var r = hours[d] || [];
 			var a = r[0] || ['', ''];
 			var b = r[1] || ['', ''];
-			return '<div class="ayla-hours-row"><span>' + esc(t(d)) + '</span>' +
-				'<input type="time" data-h="' + prefix + d + '-0-0" value="' + esc(a[0]) + '"> - <input type="time" data-h="' + prefix + d + '-0-1" value="' + esc(a[1]) + '">' +
-				' &nbsp; <input type="time" data-h="' + prefix + d + '-1-0" value="' + esc(b[0]) + '"> - <input type="time" data-h="' + prefix + d + '-1-1" value="' + esc(b[1]) + '"></div>';
+			var hasSecond = !!(b[0] || b[1]);
+			return '<div class="ayla-hours-row" data-day="' + d + '"><span class="ayla-hours-day">' + esc(t(d)) + '</span>' +
+				'<span class="ayla-hours-range"><input type="time" data-h="' + prefix + d + '-0-0" value="' + esc(a[0]) + '"> - <input type="time" data-h="' + prefix + d + '-0-1" value="' + esc(a[1]) + '"></span>' +
+				'<span class="ayla-hours-range ayla-hours-second"' + (hasSecond ? '' : ' hidden') + '><input type="time" data-h="' + prefix + d + '-1-0" value="' + esc(b[0]) + '"> - <input type="time" data-h="' + prefix + d + '-1-1" value="' + esc(b[1]) + '"></span>' +
+				'<button type="button" class="button-link ayla-hours-more" data-more title="' + esc(t('second_period_help')) + '"' + (hasSecond ? ' hidden' : '') + '>' + esc(t('second_period')) + '</button>' +
+				'<button type="button" class="button-link" data-copy title="' + esc(t('copy_to_all_help')) + '">' + esc(t('copy_to_all')) + '</button>' +
+				'<button type="button" class="button-link ayla-hours-clear" data-clear>' + esc(t('clear_day')) + '</button></div>';
 		}).join('');
+		return '<div class="ayla-hours" data-hours="' + prefix + '">' + rows + '<p class="ayla-sub">' + esc(t('closed_hint')) + '</p></div>';
+	}
+
+	/* One handler per editor: second period, copy to all days, clear. */
+	document.addEventListener('click', function (e) {
+		var button = e.target.closest ? e.target.closest('[data-more],[data-copy],[data-clear]') : null;
+		if (!button) { return; }
+		var row = button.closest('.ayla-hours-row');
+		var box = row.closest('.ayla-hours');
+		var inputs = function (r) { return r.querySelectorAll('input[type=time]'); };
+
+		if (button.hasAttribute('data-more')) {
+			setSecond(row, true);
+			return;
+		}
+		if (button.hasAttribute('data-clear')) {
+			Array.prototype.forEach.call(inputs(row), function (i) { i.value = ''; });
+			setSecond(row, false);
+			return;
+		}
+
+		var source = Array.prototype.map.call(inputs(row), function (i) { return i.value; });
+		var showSecond = !!(source[2] || source[3]);
+		Array.prototype.forEach.call(box.querySelectorAll('.ayla-hours-row'), function (other) {
+			if (other === row) { return; }
+			Array.prototype.forEach.call(inputs(other), function (i, n) { i.value = source[n]; });
+			setSecond(other, showSecond);
+		});
+	});
+
+	function setSecond(row, on) {
+		row.querySelector('.ayla-hours-second').hidden = !on;
+		row.querySelector('[data-more]').hidden = on;
 	}
 
 	function readHours(scope, prefix) {
@@ -265,6 +302,41 @@
 			if (ranges.length) { out[d] = ranges; }
 		});
 		return out;
+	}
+
+	/* Returns a message for the first day whose hours cannot be saved, or '' when all are fine. Before this, a half-filled period was dropped silently. */
+	function hoursProblem(scope, prefix) {
+		for (var n = 0; n < ORDER.length; n++) {
+			var d = ORDER[n], ranges = [];
+			for (var i = 0; i < 2; i++) {
+				var s = scope.querySelector('[data-h="' + prefix + d + '-' + i + '-0"]').value;
+				var e = scope.querySelector('[data-h="' + prefix + d + '-' + i + '-1"]').value;
+				if ((s && !e) || (!s && e)) { return t('hours_incomplete') + ' ' + t(d); }
+				if (s && e) {
+					if (e <= s) { return t('hours_order') + ' ' + t(d); }
+					ranges.push([s, e]);
+				}
+			}
+			if (ranges.length === 2 && ranges[1][0] < ranges[0][1]) { return t('hours_overlap') + ' ' + t(d); }
+		}
+		return '';
+	}
+
+	/* Fills only the days that are still empty. Returns how many days were filled. */
+	function fillHours(scope, prefix, hours) {
+		var filled = 0;
+		ORDER.forEach(function (d) {
+			var r = hours[d];
+			var row = scope.querySelector('.ayla-hours[data-hours="' + prefix + '"] [data-day="' + d + '"]');
+			if (!r || !row) { return; }
+			var inputs = row.querySelectorAll('input[type=time]');
+			if (Array.prototype.some.call(inputs, function (i) { return i.value; })) { return; }
+			var flat = [(r[0] || [])[0] || '', (r[0] || [])[1] || '', (r[1] || [])[0] || '', (r[1] || [])[1] || ''];
+			Array.prototype.forEach.call(inputs, function (i, n) { i.value = flat[n]; });
+			setSecond(row, !!(flat[2] || flat[3]));
+			filled++;
+		});
+		return filled;
 	}
 
 	/* ---------- Doctors ---------- */
@@ -313,6 +385,8 @@
 
 		el('d-cancel').addEventListener('click', function () { box.innerHTML = ''; });
 		el('d-save').addEventListener('click', function () {
+			var problem = hoursProblem(box, 'd');
+			if (problem) { return notice(box, problem); }
 			var payload = {
 				name: el('d-name').value, specialty: el('d-spec').value,
 				appointment_duration: parseInt(el('d-dur').value, 10) || 30,
@@ -327,6 +401,29 @@
 
 	/* ---------- Business info, services, FAQs ---------- */
 
+	/* Reads the site the plugin runs on (contact details, opening hours, FAQs). Nothing is saved by this. */
+	function scanSite() {
+		var body = new FormData();
+		body.append('action', 'ayla_site_scan');
+		body.append('nonce', D.nonce);
+		return fetch(D.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body })
+			.then(function (r) { return r.json(); })
+			.then(function (res) { return res && res.success ? res.data : null; })
+			.catch(function () { return null; });
+	}
+
+	/* Which scanned value suits a business field: by its type first, then by its name. */
+	function scanKeyFor(spec) {
+		var key = String(spec.key || '') + ' ' + String(spec.label || '');
+		if (spec.type === 'email' || /mail/i.test(key)) { return 'email'; }
+		if (/whats/i.test(key)) { return ''; }
+		if (spec.type === 'tel' || /phone|tel\b|mobile|هاتف|جوال/i.test(key)) { return 'phone'; }
+		if (spec.type === 'textarea' || /about|desc|intro|summary|نبذة/i.test(key)) { return 'about'; }
+		if (spec.type === 'url') { return 'website'; }
+		if (/web|site|company|business|name|اسم/i.test(key)) { return 'name'; }
+		return '';
+	}
+
 	function business(view) {
 		api('account', 'GET').then(function (res) {
 			if (!res.ok) { return fail(view, res); }
@@ -335,6 +432,7 @@
 			var businessFields = fields.map(function (spec) { return businessField(spec, (a.business || {})[spec.key]); }).join('');
 			view.innerHTML =
 				'<div class="ayla-card"><h3>' + esc((a.category && a.category.name) || t('clinic_info')) + '</h3>' +
+				'<p><button type="button" class="button" id="b-fill">' + esc(t('fill_from_site')) + '</button></p>' +
 				businessFields + field('b-staff', t('staff_number'), a.staff_alert_number) +
 				((a.category && (a.category.wp_modules || []).indexOf('emergency') !== -1) ? field('b-emerg', t('emergency_contact'), a.emergency_contact) : '') +
 				'<p><label>' + esc(t('days_off')) + '<br><textarea id="b-off" rows="3" class="large-text" dir="ltr">' + esc((a.days_off || []).join('\n')) + '</textarea></label></p>' +
@@ -342,7 +440,33 @@
 				'<p><button class="button button-primary" id="b-save">' + esc(t('save')) + '</button></p></div>' +
 				'<div class="ayla-card" id="ayla-services"></div><div class="ayla-card" id="ayla-faqs"></div>';
 
+			el('b-fill').addEventListener('click', function () {
+				var button = el('b-fill');
+				button.disabled = true;
+				button.textContent = t('scanning');
+				scanSite().then(function (data) {
+					button.disabled = false;
+					button.textContent = t('fill_from_site');
+					if (!data) { return notice(view, t('error_generic')); }
+
+					var filled = [];
+					fields.forEach(function (spec) {
+						var target = scanKeyFor(spec), input = el('b-field-' + spec.key);
+						if (target && input && !input.value.trim() && data.business && data.business[target]) {
+							input.value = data.business[target];
+							filled.push(spec.label || spec.key);
+						}
+					});
+					var days = fillHours(view, 'b', data.hours || {});
+					if (days) { filled.push(t('working_hours') + ' (' + days + ')'); }
+
+					notice(view, filled.length ? t('filled_review').replace('%s', filled.join(', ')) : t('nothing_to_fill'), filled.length ? 'success' : 'info');
+				});
+			});
+
 			el('b-save').addEventListener('click', function () {
+				var problem = hoursProblem(view, 'b');
+				if (problem) { return notice(view, problem); }
 				var off = el('b-off').value.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
 				var business = {};
 				fields.forEach(function (spec) { business[spec.key] = el('b-field-' + spec.key).value; });
@@ -409,13 +533,30 @@
 		var box = el('ayla-faqs');
 		api('faqs', 'GET').then(function (res) {
 			if (!res.ok) { return fail(box, res); }
+			var existing = res.data.items.map(function (f) { return String(f.question).trim().toLowerCase(); });
 			var rows = res.data.items.map(function (f) {
 				return '<tr><td>' + esc(f.question) + '</td><td>' + esc(f.answer) + '</td><td><button class="button" data-fdel="' + f.id + '">' + esc(t('remove')) + '</button></td></tr>';
 			});
-			box.innerHTML = '<h3>' + esc(t('faqs')) + '</h3>' + table([t('question'), t('answer'), ''], rows) +
+			box.innerHTML = '<h3>' + esc(t('faqs')) + '</h3>' +
+				'<p><button type="button" class="button" id="f-import">' + esc(t('import_faqs')) + '</button></p><div id="f-import-box"></div>' +
+				table([t('question'), t('answer'), ''], rows) +
 				'<p><input type="text" id="f-q" class="regular-text" placeholder="' + esc(t('question')) + '"></p>' +
 				'<p><textarea id="f-a" rows="2" class="large-text" placeholder="' + esc(t('answer')) + '"></textarea></p>' +
 				'<p><button class="button button-primary" id="f-add">' + esc(t('add_faq')) + '</button></p>';
+
+			el('f-import').addEventListener('click', function () {
+				var button = el('f-import');
+				button.disabled = true;
+				button.textContent = t('scanning');
+				scanSite().then(function (data) {
+					button.disabled = false;
+					button.textContent = t('import_faqs');
+					if (!data) { return notice(box, t('error_generic')); }
+					var fresh = (data.faqs || []).filter(function (f) { return existing.indexOf(String(f.question).trim().toLowerCase()) === -1; });
+					if (!fresh.length) { return notice(box, (data.faqs || []).length ? t('faqs_all_exist') : t('faqs_none'), 'info'); }
+					importFaqs(box, fresh, listFaqs);
+				});
+			});
 
 			el('f-add').addEventListener('click', function () {
 				api('faqs', 'POST', { question: el('f-q').value, answer: el('f-a').value }).then(function (r) {
@@ -427,6 +568,38 @@
 					if (!window.confirm(t('confirm_remove'))) { return; }
 					api('faqs/' + b.getAttribute('data-fdel'), 'DELETE').then(function () { listFaqs(); });
 				});
+			});
+		});
+	}
+
+	/* Shows the questions found on the site with a checkbox each; nothing is added until the owner confirms. */
+	function importFaqs(box, items, done) {
+		var target = el('f-import-box');
+		target.innerHTML = '<div class="ayla-import"><h4>' + esc(t('faqs_found')) + ' (' + items.length + ')</h4>' +
+			items.map(function (f, i) {
+				return '<label class="ayla-import-item"><input type="checkbox" data-i="' + i + '" checked> <strong>' + esc(f.question) + '</strong><br><span class="ayla-sub">' + esc(f.answer.length > 160 ? f.answer.slice(0, 160) + '...' : f.answer) + '</span></label>';
+			}).join('') +
+			'<p><button type="button" class="button button-primary" id="f-import-go">' + esc(t('import_selected')) + '</button> <button type="button" class="button" id="f-import-cancel">' + esc(t('cancel')) + '</button></p></div>';
+
+		el('f-import-cancel').addEventListener('click', function () { target.innerHTML = ''; });
+		el('f-import-go').addEventListener('click', function () {
+			var picked = Array.prototype.filter.call(target.querySelectorAll('input[data-i]'), function (c) { return c.checked; })
+				.map(function (c) { return items[parseInt(c.getAttribute('data-i'), 10)]; });
+			if (!picked.length) { return; }
+			el('f-import-go').disabled = true;
+
+			var added = 0, failed = '';
+			// One at a time, so the service is not hit with dozens of requests at once.
+			picked.reduce(function (chain, f) {
+				return chain.then(function () {
+					return api('faqs', 'POST', { question: f.question, answer: f.answer }).then(function (r) {
+						if (r.ok) { added++; } else if (!failed) { failed = (r.error && r.error.message) || t('error_generic'); }
+					});
+				});
+			}, Promise.resolve()).then(function () {
+				done();
+				var view = el('ayla-view');
+				notice(view, t('faqs_imported') + ': ' + added + (failed ? ' (' + failed + ')' : ''), failed ? 'warning' : 'success');
 			});
 		});
 	}

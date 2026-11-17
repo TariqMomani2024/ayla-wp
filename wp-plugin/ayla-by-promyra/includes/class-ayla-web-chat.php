@@ -95,15 +95,35 @@ class Ayla_Web_Chat {
 		return $url;
 	}
 
+	/**
+	 * The language the visitor is reading the site in: the multilingual plugin or theme if there is one, else the
+	 * site locale. The language of the Ayla account is only a last resort. (The JS also follows <html lang>.)
+	 */
 	private static function language() {
-		$fallback = function_exists( 'dentacare_lang' ) ? dentacare_lang() : ( is_rtl() ? 'ar' : 'en' );
-		$cached  = get_transient( 'ayla_web_chat_language' );
+		$code = '';
+
+		if ( function_exists( 'dentacare_lang' ) ) {
+			$code = (string) dentacare_lang();
+		} elseif ( function_exists( 'pll_current_language' ) ) {
+			$code = (string) pll_current_language( 'slug' );
+		} elseif ( defined( 'ICL_LANGUAGE_CODE' ) ) {
+			$code = (string) ICL_LANGUAGE_CODE;
+		} else {
+			$code = (string) determine_locale();
+		}
+
+		$code = strtolower( substr( $code, 0, 2 ) );
+		if ( in_array( $code, array( 'ar', 'en' ), true ) ) {
+			return $code;
+		}
+
+		$cached = get_transient( 'ayla_web_chat_language' );
 		if ( is_string( $cached ) && in_array( $cached, array( 'ar', 'en' ), true ) ) {
 			return $cached;
 		}
 
 		$res  = Ayla_Client::request( 'GET', '/account' );
-		$lang = $res['ok'] && isset( $res['data']['default_language'] ) ? strtolower( substr( (string) $res['data']['default_language'], 0, 2 ) ) : $fallback;
+		$lang = $res['ok'] && isset( $res['data']['default_language'] ) ? strtolower( substr( (string) $res['data']['default_language'], 0, 2 ) ) : ( is_rtl() ? 'ar' : 'en' );
 		$lang = 'ar' === $lang ? 'ar' : 'en';
 		set_transient( 'ayla_web_chat_language', $lang, $res['ok'] ? 6 * HOUR_IN_SECONDS : 5 * MINUTE_IN_SECONDS );
 

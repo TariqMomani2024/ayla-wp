@@ -23,8 +23,14 @@
 .ayla-wrap .ayla-msg small{display:block;color:var(--ayla-soft);font-size:11px;margin-top:3px}
 .ayla-wrap .ayla-msg.in{background:var(--ayla-tint)}
 .ayla-wrap .ayla-msg.out{background:color-mix(in srgb,var(--ayla-accent) 24%,#fff);margin-inline-start:auto}
-.ayla-wrap .ayla-hours-row{display:flex;align-items:center;gap:6px;margin:4px 0}
-.ayla-wrap .ayla-hours-row > span{width:90px}
+.ayla-wrap .ayla-hours-row{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin:4px 0}
+.ayla-wrap .ayla-hours-day{width:90px;font-weight:600}
+.ayla-wrap .ayla-hours-range{display:inline-flex;align-items:center;gap:6px}
+.ayla-wrap .ayla-hours-range[hidden],.ayla-wrap .ayla-hours-row [hidden]{display:none}
+.ayla-wrap .ayla-hours-row .button-link{font-size:12px}
+.ayla-wrap .ayla-hours-clear{color:#b32d2e}
+.ayla-wrap .ayla-import{border:1px solid var(--ayla-line);border-radius:8px;padding:10px 14px;margin:8px 0 14px;background:#fafafa}
+.ayla-wrap .ayla-import-item{display:block;margin:0 0 10px;line-height:1.5}
 .ayla-wrap .ayla-pager{margin:12px 0}
 .ayla-wrap .ayla-table td,.ayla-wrap .ayla-table th{vertical-align:top}
 @media(max-width:782px){.ayla-wrap .ayla-cols{grid-template-columns:1fr}}

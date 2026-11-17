@@ -32,10 +32,21 @@
     }
 
     var copy = AylaWebChat.i18n || {};
+
+    // The widget speaks the language the visitor is reading on the page (the <html lang> of the site, which every
+    // language switcher updates), not the language of the Ayla account.
+    function pageLang() {
+        var html = document.documentElement;
+        var lang = (html.getAttribute('lang') || '').toLowerCase().slice(0, 2);
+        if (copy[lang]) { return lang; }
+        if ((html.getAttribute('dir') || '').toLowerCase() === 'rtl' && copy.ar) { return 'ar'; }
+        return null;
+    }
+
     var state = {
         visitorId: store.get('aylaVisitorId'),
         conversationId: store.get('aylaConversationId'),
-        lang: copy[AylaWebChat.lang] ? AylaWebChat.lang : 'en',
+        lang: pageLang() || (copy[AylaWebChat.lang] ? AylaWebChat.lang : 'en'),
         large: false,
         chatHere: false
     };
@@ -159,6 +170,14 @@
         messages.scrollTop = messages.scrollHeight;
     });
     input.addEventListener('input', function () { setLanguage(detect(input.value)); });
+
+    // Sites that switch language without reloading the page change <html lang>; follow it while nothing has been typed.
+    if (window.MutationObserver) {
+        new MutationObserver(function () {
+            var lang = pageLang();
+            if (lang && !messages.querySelector('.ayla-chat__message--in')) { setLanguage(lang); }
+        }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang', 'dir'] });
+    }
 
     function inline(parent, text) {
         text.split(/(\*\*[^*]+\*\*)/).forEach(function (part) {
