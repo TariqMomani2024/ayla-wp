@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Ayla by Promyra Digital Solutions
- * Description:       Your AI assistant: answers website visitors and WhatsApp messages, learns from your site, books appointments and follows up with customers.
+ * Description:       Your AI assistant on your website: answers visitors, learns from your site, books appointments and follows up with customers. WhatsApp is optional and off until you turn it on.
  * Version:           1.5.2
  * Requires at least: 6.0
  * Requires PHP:      7.4

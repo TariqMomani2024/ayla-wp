@@ -77,7 +77,7 @@ class Ayla_Web_Chat {
 		) );
 	}
 
-	/** The account's WhatsApp link, cached briefly; empty when WhatsApp is not connected. */
+	/** The account's WhatsApp link, cached briefly; empty unless the owner has switched WhatsApp on in the Ayla service. */
 	private static function whatsapp_url() {
 		$cached = get_transient( 'ayla_web_chat_whatsapp' );
 		if ( is_string( $cached ) ) {
@@ -90,7 +90,7 @@ class Ayla_Web_Chat {
 			$url = '';
 		}
 
-		set_transient( 'ayla_web_chat_whatsapp', $url, $res['ok'] ? HOUR_IN_SECONDS : 5 * MINUTE_IN_SECONDS );
+		set_transient( 'ayla_web_chat_whatsapp', $url, $res['ok'] ? 10 * MINUTE_IN_SECONDS : 5 * MINUTE_IN_SECONDS );
 
 		return $url;
 	}
