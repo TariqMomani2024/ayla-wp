@@ -38,6 +38,55 @@ class Ayla_Client {
 		return self::send( $method, '/site' . $path, $query, null === $payload ? null : wp_json_encode( $payload ), array(), false, $timeout );
 	}
 
+	/** Update checks are server to server: API key only, no dashboard session. */
+	public static function updates( $timeout = 8 ) {
+		return self::send( 'GET', '/plugin/update', array( 'version' => AYLA_VERSION ), null, array(), false, $timeout );
+	}
+
+	/**
+	 * Streams a release zip to $dest. Sends the credentials as headers, so the package link never needs to be
+	 * signed or shared.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function download_package( $version, $dest ) {
+		if ( ! Ayla_Settings::is_configured() ) {
+			return new WP_Error( 'ayla_not_configured', Ayla_I18n::t( 'not_configured' ) );
+		}
+
+		$response = wp_remote_get(
+			AYLA_API_BASE . '/plugin/download/' . rawurlencode( $version ),
+			array(
+				'timeout'     => 300,
+				'redirection' => 0,
+				'stream'      => true,
+				'filename'    => $dest,
+				'headers'     => self::headers( Ayla_Settings::get() ),
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		$status = (int) wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $status ) {
+			return new WP_Error( 'ayla_download_failed', Ayla_I18n::t( 'update_download_failed' ) );
+		}
+
+		return true;
+	}
+
+	private static function headers( array $settings ) {
+		return array(
+			'Authorization'         => 'Bearer ' . $settings['api_key'],
+			'X-Ayla-Domain'         => $settings['domain'],
+			'X-Ayla-Plugin-Version' => AYLA_VERSION,
+			'Accept'                => 'application/json',
+			'Content-Type'          => 'application/json',
+		);
+	}
+
 	private static function send( $method, $path, array $query, $body, array $extra_headers, $with_session, $timeout = 20 ) {
 		$settings = Ayla_Settings::get();
 
@@ -45,13 +94,7 @@ class Ayla_Client {
 			return self::failure( 0, 'not_configured', Ayla_I18n::t( 'not_configured' ) );
 		}
 
-		$headers = array(
-			'Authorization'          => 'Bearer ' . $settings['api_key'],
-			'X-Ayla-Domain'          => $settings['domain'],
-			'X-Ayla-Plugin-Version'  => AYLA_VERSION,
-			'Accept'                 => 'application/json',
-			'Content-Type'           => 'application/json',
-		);
+		$headers = self::headers( $settings );
 
 		if ( $with_session ) {
 			$token = self::session_token();
