@@ -20,7 +20,8 @@
     var ICONS = {
         expand: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
         shrink: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>',
-        close: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>'
+        close: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>',
+        compose: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>'
     };
 
     if (store.get('aylaChatFlowVersion') !== '3') {
@@ -48,7 +49,10 @@
         conversationId: store.get('aylaConversationId'),
         lang: pageLang() || (copy[AylaWebChat.lang] ? AylaWebChat.lang : 'en'),
         large: false,
-        chatHere: false
+        chatHere: false,
+        // True after "new conversation": the next message must open a fresh conversation, not return to the old one.
+        fresh: false,
+        hasMessages: false
     };
     if (!state.visitorId) {
         state.visitorId = newId();
@@ -71,6 +75,7 @@
         '<div class="ayla-chat__head">' +
         '<span class="ayla-chat__avatar"><img src="' + AylaWebChat.logoUrl + '" alt=""><span class="ayla-chat__dot"></span></span>' +
         '<div class="ayla-chat__id"><h2 class="ayla-chat__title"></h2><span class="ayla-chat__status"></span></div>' +
+        '<button class="ayla-chat__icon" type="button" data-new hidden></button>' +
         '<button class="ayla-chat__icon" type="button" data-size-toggle></button>' +
         '<button class="ayla-chat__icon ayla-chat__icon--close" type="button" data-close>' + ICONS.close + '</button>' +
         '</div>' +
@@ -82,7 +87,7 @@
     document.body.appendChild(root);
 
     var toggle = root.querySelector('.ayla-chat__toggle'), panel = root.querySelector('.ayla-chat__panel'), messages = root.querySelector('.ayla-chat__messages'), form = root.querySelector('form');
-    var input = form.elements.message, submit = form.querySelector('button[type=submit]'), sizeButton = root.querySelector('[data-size-toggle]'), closeButton = root.querySelector('[data-close]');
+    var input = form.elements.message, submit = form.querySelector('button[type=submit]'), sizeButton = root.querySelector('[data-size-toggle]'), closeButton = root.querySelector('[data-close]'), newButton = root.querySelector('[data-new]');
     var lastWhatsApp = null;
     var whatsappUrl = AylaWebChat.whatsappUrl || null;
     var chooser = null;
@@ -134,6 +139,8 @@
         panel.setAttribute('aria-label', L('title'));
         sizeButton.setAttribute('aria-label', state.large ? L('shrink') : L('expand'));
         sizeButton.setAttribute('title', state.large ? L('shrink') : L('expand'));
+        newButton.setAttribute('aria-label', L('newChat'));
+        newButton.setAttribute('title', L('newChat'));
         closeButton.setAttribute('aria-label', L('close'));
         closeButton.setAttribute('title', L('close'));
         panel.setAttribute('dir', state.lang === 'ar' ? 'rtl' : 'ltr');
@@ -143,6 +150,7 @@
         if (lang && lang !== state.lang && copy[lang]) { state.lang = lang; applyLanguage(); }
     }
     sizeButton.innerHTML = ICONS.expand;
+    newButton.innerHTML = ICONS.compose;
     applyLanguage();
 
     function setOpen(open) {
@@ -242,6 +250,8 @@
     function render(items, whatsappUrl) {
         messages.innerHTML = '';
         chooser = null;
+        state.hasMessages = items.length > 0;
+        updateNewButton();
         items.forEach(function (item, index) { bubble(item.direction, item.body, { interactive: item.direction === 'out' && index === items.length - 1 }); });
         lastWhatsApp = whatsappUrl || lastWhatsApp;
         if (lastWhatsApp) { var link = document.createElement('a'); link.className = 'ayla-chat__choice ayla-chat__choice--whatsapp'; link.href = lastWhatsApp; link.target = '_blank'; link.rel = 'noopener'; link.textContent = L('whatsapp'); messages.appendChild(link); }
@@ -249,6 +259,26 @@
     }
 
     function hideChooser() { if (chooser) { chooser.remove(); chooser = null; } }
+
+    // Shown once there is a conversation to leave (messages on screen, or one remembered from an earlier visit).
+    function updateNewButton() { newButton.hidden = !(state.hasMessages || state.conversationId); }
+    updateNewButton();
+
+    // "New conversation": forget the stored conversation, empty the window, and make the next message open a fresh one.
+    // The visitor keeps their identity, so the team still sees it is the same person.
+    newButton.addEventListener('click', function () {
+        state.conversationId = null;
+        store.remove('aylaConversationId');
+        state.fresh = true;
+        state.hasMessages = false;
+        state.chatHere = false;
+        lastWhatsApp = null;
+        chooser = null;
+        messages.innerHTML = '';
+        updateNewButton();
+        showChooser();
+        if (!chooser) { input.focus(); }
+    });
 
     // Offered once per page load when the panel opens on an empty chat.
     function showChooser() {
@@ -296,11 +326,14 @@
         state.chatHere = true;
         submit.disabled = true;
         bubble('in', value);
+        state.hasMessages = true;
+        updateNewButton();
         var typing = bubble('out', '', { typing: true });
         input.value = '';
 
-        request('/web-chat/conversations/' + (state.conversationId || 0) + '/messages', { visitor_id: state.visitorId, message: value, conversation_id: state.conversationId || '' }).then(function (response) {
+        request('/web-chat/conversations/' + (state.conversationId || 0) + '/messages', { visitor_id: state.visitorId, message: value, conversation_id: state.conversationId || '', fresh: state.fresh ? '1' : '' }).then(function (response) {
             if (!response.success) { throw new Error('failed'); }
+            state.fresh = false;
             state.conversationId = response.data.conversation_id; store.set('aylaConversationId', state.conversationId);
             render(response.data.messages, response.data.whatsapp_url);
         }).catch(function () {

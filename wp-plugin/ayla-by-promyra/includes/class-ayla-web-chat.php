@@ -61,10 +61,10 @@ class Ayla_Web_Chat {
 		$lang = self::language();
 		$copy = array(
 			'ar' => array(
-				'title' => 'المساعد الذكي', 'online' => 'متصل الآن', 'messageLabel' => 'كيف يمكنني مساعدتك؟', 'messagePlaceholder' => 'اكتب رسالتك...', 'send' => 'إرسال', 'genericError' => 'تعذر إرسال الرسالة الآن. يرجى المحاولة لاحقاً.', 'whatsapp' => 'التواصل عبر واتساب', 'chatHere' => 'المحادثة هنا', 'chooseTitle' => 'كيف تحب أن نتواصل؟', 'expand' => 'تكبير المحادثة', 'shrink' => 'تصغير المحادثة', 'close' => 'إغلاق المحادثة',
+				'title' => 'المساعد الذكي', 'online' => 'متصل الآن', 'messageLabel' => 'كيف يمكنني مساعدتك؟', 'messagePlaceholder' => 'اكتب رسالتك...', 'send' => 'إرسال', 'genericError' => 'تعذر إرسال الرسالة الآن. يرجى المحاولة لاحقاً.', 'whatsapp' => 'التواصل عبر واتساب', 'chatHere' => 'المحادثة هنا', 'chooseTitle' => 'كيف تحب أن نتواصل؟', 'expand' => 'تكبير المحادثة', 'shrink' => 'تصغير المحادثة', 'close' => 'إغلاق المحادثة', 'newChat' => 'محادثة جديدة',
 			),
 			'en' => array(
-				'title' => 'Smart assistant', 'online' => 'Online now', 'messageLabel' => 'How can I help?', 'messagePlaceholder' => 'Write your message...', 'send' => 'Send', 'genericError' => 'Your message could not be sent. Please try again later.', 'whatsapp' => 'Continue on WhatsApp', 'chatHere' => 'Chat here', 'chooseTitle' => 'How would you like to continue?', 'expand' => 'Expand chat', 'shrink' => 'Shrink chat', 'close' => 'Close chat',
+				'title' => 'Smart assistant', 'online' => 'Online now', 'messageLabel' => 'How can I help?', 'messagePlaceholder' => 'Write your message...', 'send' => 'Send', 'genericError' => 'Your message could not be sent. Please try again later.', 'whatsapp' => 'Continue on WhatsApp', 'chatHere' => 'Chat here', 'chooseTitle' => 'How would you like to continue?', 'expand' => 'Expand chat', 'shrink' => 'Shrink chat', 'close' => 'Close chat', 'newChat' => 'New conversation',
 			),
 		);
 		wp_localize_script( 'ayla-web-chat', 'AylaWebChat', array(
@@ -140,9 +140,11 @@ class Ayla_Web_Chat {
 		}
 
 		$conversation = isset( $_POST['conversation_id'] ) ? absint( $_POST['conversation_id'] ) : 0;
+		// "New conversation" in the widget: open a fresh one instead of returning to the open one.
+		$fresh = ! empty( $_POST['fresh'] ) && ! $conversation;
 
 		if ( ! $conversation ) {
-			$conversation = self::start( $visitor );
+			$conversation = self::start( $visitor, $fresh );
 			if ( ! $conversation ) {
 				wp_send_json_error( array( 'message' => __( 'تعذر بدء المحادثة الآن.', 'ayla-by-promyra' ) ), 503 );
 			}
@@ -182,8 +184,12 @@ class Ayla_Web_Chat {
 	}
 
 	/** Starts (or finds the open) conversation of this visitor. @return int 0 when the service did not answer */
-	private static function start( $visitor ) {
-		$start = Ayla_Client::relay( 'POST', '/web-chat/start', array(), wp_json_encode( array( 'visitor_id' => $visitor ) ), array() );
+	private static function start( $visitor, $fresh = false ) {
+		$body  = array( 'visitor_id' => $visitor );
+		if ( $fresh ) {
+			$body['new_conversation'] = true;
+		}
+		$start = Ayla_Client::relay( 'POST', '/web-chat/start', array(), wp_json_encode( $body ), array() );
 
 		return $start['ok'] && ! empty( $start['data']['conversation_id'] ) ? (int) $start['data']['conversation_id'] : 0;
 	}
