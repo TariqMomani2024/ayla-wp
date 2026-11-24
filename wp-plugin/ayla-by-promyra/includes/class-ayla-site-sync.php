@@ -515,6 +515,10 @@ class Ayla_Site_Sync {
 					if ( '' === $content ) {
 						$content = Ayla_Site_Reader::read_public_content( get_permalink( $p ) );
 					}
+					$fields = self::public_fields( $p );
+					if ( '' !== $fields ) {
+						$content = trim( $content . ' ' . $fields );
+					}
 					if ( '' === $content && '' === trim( $p->post_excerpt ) ) {
 						continue;
 					}
@@ -534,6 +538,88 @@ class Ayla_Site_Sync {
 			}
 
 			$out = array_merge( $out, self::offers( $base ) );
+		}
+
+		return array_merge( $out, self::site_overview() );
+	}
+
+	/** Public custom fields and WooCommerce prices of one post, as "Label: value" text. Private and secret-looking keys are skipped. */
+	private static function public_fields( $post ) {
+		$lines = array();
+
+		if ( 'product' === $post->post_type && function_exists( 'wc_get_product' ) ) {
+			$product = wc_get_product( $post->ID );
+			if ( $product ) {
+				$currency = function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : '';
+				foreach ( array( 'Price' => $product->get_price(), 'Regular price' => $product->get_regular_price(), 'Sale price' => $product->get_sale_price(), 'SKU' => $product->get_sku() ) as $label => $value ) {
+					if ( '' !== (string) $value ) {
+						$lines[] = $label . ': ' . self::plain( $value, 60 ) . ( false !== strpos( $label, 'rice' ) ? ' ' . $currency : '' );
+					}
+				}
+			}
+		}
+
+		$secret = '/(pass|token|secret|api|nonce|session|salt|hash|auth|card|iban|private|licen|key|email|phone|ip_)/i';
+		$noise  = '/^(rank_math|yoast|footnotes|inline_featured|wp_|ayla|classic-editor|_|field_|elementor|et_|vc_|fusion_|slide)/i';
+		foreach ( (array) get_post_meta( $post->ID ) as $key => $values ) {
+			if ( count( $lines ) >= 25 ) {
+				break;
+			}
+			if ( preg_match( $noise, $key ) || preg_match( $secret, $key ) || empty( $values[0] ) ) {
+				continue;
+			}
+			$value = $values[0];
+			if ( ! is_string( $value ) || is_serialized( $value ) || preg_match( '/^field_[a-z0-9]+$/i', $value ) || preg_match( '/^[\[{]/', ltrim( $value ) ) ) {
+				continue;
+			}
+			$value = self::plain( $value, 600 );
+			if ( '' === $value || ctype_digit( $value ) && strlen( $value ) > 6 ) {
+				continue;
+			}
+			$lines[] = ucfirst( trim( str_replace( array( '_', '-' ), ' ', $key ) ) ) . ': ' . $value;
+		}
+
+		return implode( '. ', $lines );
+	}
+
+	/** The site's public identity and navigation menus, so Ayla knows how the site is organised. */
+	private static function site_overview() {
+		$out  = array();
+		$info = array_filter( array(
+			'Site name: ' . self::plain( get_bloginfo( 'name' ), 200 ),
+			'' !== get_bloginfo( 'description' ) ? 'Tagline: ' . self::plain( get_bloginfo( 'description' ), 300 ) : '',
+			'Website: ' . home_url( '/' ),
+		) );
+		$out[] = array(
+			'type'       => 'page',
+			'id'         => 'site-overview',
+			'lang'       => '',
+			'title'      => 'Site overview',
+			'summary'    => self::plain( get_bloginfo( 'description' ), 300 ),
+			'content'    => implode( '. ', $info ),
+			'url'        => home_url( '/' ),
+			'updated_at' => gmdate( 'c' ),
+		);
+
+		foreach ( (array) wp_get_nav_menus() as $menu ) {
+			$items = wp_get_nav_menu_items( $menu->term_id );
+			if ( ! is_array( $items ) || ! $items ) {
+				continue;
+			}
+			$lines = array();
+			foreach ( $items as $item ) {
+				$lines[] = self::plain( $item->title, 120 ) . ' (' . esc_url_raw( $item->url ) . ')';
+			}
+			$out[] = array(
+				'type'       => 'page',
+				'id'         => 'menu-' . $menu->term_id,
+				'lang'       => '',
+				'title'      => 'Menu: ' . self::plain( $menu->name, 120 ),
+				'summary'    => '',
+				'content'    => implode( ' | ', array_slice( $lines, 0, 80 ) ),
+				'url'        => '',
+				'updated_at' => gmdate( 'c' ),
+			);
 		}
 
 		return $out;
