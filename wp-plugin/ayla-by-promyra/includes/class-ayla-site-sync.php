@@ -512,10 +512,12 @@ class Ayla_Site_Sync {
 				$posts = get_posts( $base + array( 'post_type' => $set[0], 'numberposts' => $set[3], 'orderby' => 'date', 'order' => 'DESC' ) );
 				foreach ( $posts as $p ) {
 					$content = self::plain( $p->post_content, 20000 );
+					if ( '' === $content ) {
+						$content = Ayla_Site_Reader::read_public_content( get_permalink( $p ) );
+					}
 					if ( '' === $content && '' === trim( $p->post_excerpt ) ) {
 						continue;
 					}
-					$cats = 'post' === $set[0] ? get_the_category( $p->ID ) : array();
 					$out[] = array(
 						'type'         => $set[1],
 						'id'           => $set[2] . $p->ID,
@@ -524,7 +526,7 @@ class Ayla_Site_Sync {
 						'summary'      => self::plain( $p->post_excerpt, 600 ),
 						'content'      => $content,
 						'url'          => (string) get_permalink( $p ),
-						'category'     => $cats ? self::plain( $cats[0]->name, 160 ) : '',
+						'category'     => self::public_categories( $p->ID, $set[0] ),
 						'published_at' => mysql2date( 'c', $p->post_date_gmt . ' +0000', false ),
 						'updated_at'   => mysql2date( 'c', $p->post_modified_gmt . ' +0000', false ),
 					);
@@ -535,6 +537,26 @@ class Ayla_Site_Sync {
 		}
 
 		return $out;
+	}
+
+	private static function public_categories( $post_id, $post_type ) {
+		$names      = array();
+		$taxonomies = get_object_taxonomies( $post_type, 'objects' );
+		foreach ( $taxonomies as $taxonomy ) {
+			if ( empty( $taxonomy->public ) && empty( $taxonomy->publicly_queryable ) ) {
+				continue;
+			}
+
+			$terms = get_the_terms( $post_id, $taxonomy->name );
+			if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
+				continue;
+			}
+			foreach ( $terms as $term ) {
+				$names[] = self::plain( $term->name, 160 );
+			}
+		}
+
+		return self::plain( implode( ', ', array_unique( array_filter( $names ) ) ), 500 );
 	}
 
 	private static function offers( array $base ) {

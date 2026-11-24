@@ -369,6 +369,85 @@ class Ayla_Site_Reader {
 		return ! is_wp_error( $res ) && 200 === (int) wp_remote_retrieve_response_code( $res ) ? (string) wp_remote_retrieve_body( $res ) : '';
 	}
 
+	/** Read visible text from a published same-site page, including content rendered from public custom fields. */
+	public static function read_public_content( $url ) {
+		$home_host = strtolower( (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST ) );
+		$page_host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+		if ( '' === $home_host || $home_host !== $page_host ) {
+			return '';
+		}
+
+		$response = wp_safe_remote_get( $url, array(
+			'timeout'             => 8,
+			'redirection'         => 0,
+			'limit_response_size' => 700000,
+			'user-agent'          => 'AylaSiteReader/' . AYLA_VERSION,
+		) );
+		if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+			return '';
+		}
+
+		$html = (string) wp_remote_retrieve_body( $response );
+		if ( '' === $html ) {
+			return '';
+		}
+		if ( ! class_exists( 'DOMDocument' ) ) {
+			$has_main = preg_match( '#<main\b[^>]*>(.*?)</main>#is', $html, $match );
+			$content  = $has_main ? $match[1] : $html;
+
+			return self::visible_text( $content, ! $has_main );
+		}
+
+		$previous_errors = libxml_use_internal_errors( true );
+		$document        = new DOMDocument();
+		$loaded          = $document->loadHTML( $html, LIBXML_NONET );
+		libxml_clear_errors();
+		libxml_use_internal_errors( $previous_errors );
+		if ( ! $loaded ) {
+			return '';
+		}
+
+		$xpath = new DOMXPath( $document );
+		$root  = $xpath->query( '//main | //*[@role="main"]' )->item( 0 );
+		if ( ! $root ) {
+			$root = $document->getElementsByTagName( 'body' )->item( 0 );
+		}
+		if ( ! $root ) {
+			return '';
+		}
+
+		$remove_query = './/script | .//style | .//noscript | .//svg | .//nav | .//footer | .//aside | .//form | .//*[@hidden] | .//*[@aria-hidden="true"]';
+		if ( 'body' === strtolower( $root->nodeName ) ) {
+			$remove_query .= ' | .//header';
+		}
+		$remove = $xpath->query( $remove_query, $root );
+		for ( $i = $remove->length - 1; $i >= 0; --$i ) {
+			$node = $remove->item( $i );
+			if ( $node && $node->parentNode ) {
+				$node->parentNode->removeChild( $node );
+			}
+		}
+
+		return self::visible_text( $document->saveHTML( $root ) );
+	}
+
+	private static function visible_text( $content, $whole_document = false ) {
+		$removed = 'head|script|style|noscript|nav|footer|aside|form|svg';
+		if ( $whole_document ) {
+			$removed .= '|header';
+		}
+		$content = preg_replace( '#<(' . $removed . ')\b[^>]*>.*?</\1>#is', ' ', $content );
+		$content = preg_replace( '#<\s*br\b[^>]*>#i', "\n", $content );
+		$content = preg_replace( '#</\s*(p|h[1-6]|li|div|section|article|tr|dt|dd|ul|ol)>#i', "\n", $content );
+		$content = html_entity_decode( wp_strip_all_tags( $content ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$content = preg_replace( '/[\x{200E}\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u', '', $content );
+		$content = preg_replace( '/[ \t]+/u', ' ', $content );
+		$content = preg_replace( '/[ \t]*\n[ \t]*/u', "\n", $content );
+		$content = trim( preg_replace( '/\n{3,}/u', "\n\n", $content ) );
+
+		return mb_substr( $content, 0, 20000 );
+	}
+
 	private static function about() {
 		foreach ( array( 'about', 'about-us', 'about-company', 'who-we-are', 'من-نحن', 'عن-الشركة', 'عنا', 'نبذة' ) as $slug ) {
 			$page = get_page_by_path( $slug );

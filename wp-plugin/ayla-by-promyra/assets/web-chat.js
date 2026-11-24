@@ -241,10 +241,95 @@
         el.className = 'ayla-chat__message ayla-chat__message--' + direction + (options && options.kind ? ' ayla-chat__message--' + options.kind : '');
         el.setAttribute('dir', 'auto');
         if (options && options.typing) { el.classList.add('ayla-chat__message--typing'); el.innerHTML = '<span></span><span></span><span></span>'; }
-        else { fill(el, text, options && options.interactive); }
+        else {
+            fill(el, text, options && options.interactive);
+            if (options && options.intakeForm) { renderIntakeForm(el, options.intakeForm); }
+        }
         messages.appendChild(el);
         messages.scrollTop = messages.scrollHeight;
         return el;
+    }
+
+    function renderIntakeForm(message, schema) {
+        var allowedTypes = ['text', 'textarea', 'email', 'url', 'number', 'select'];
+        if (!schema || !Array.isArray(schema.fields) || schema.fields.length < 2 || schema.fields.length > 6) { return; }
+
+        var leadForm = document.createElement('form');
+        leadForm.className = 'ayla-chat__intake';
+        leadForm.setAttribute('dir', 'auto');
+
+        var title = document.createElement('div');
+        title.className = 'ayla-chat__intake-title';
+        title.textContent = String(schema.title || '');
+        leadForm.appendChild(title);
+
+        var controls = [];
+        schema.fields.forEach(function (field) {
+            if (!field || typeof field.name !== 'string' || !/^[a-z][a-z0-9_]{0,31}$/.test(field.name) ||
+                allowedTypes.indexOf(field.type) === -1 || typeof field.label !== 'string') { return; }
+
+            var label = document.createElement('label');
+            label.className = 'ayla-chat__intake-field';
+            label.textContent = field.label;
+
+            var control;
+            if (field.type === 'textarea') {
+                control = document.createElement('textarea');
+                control.maxLength = 1000;
+                control.rows = 3;
+            } else if (field.type === 'select') {
+                control = document.createElement('select');
+                var empty = document.createElement('option');
+                empty.value = '';
+                empty.textContent = '';
+                empty.disabled = true;
+                empty.selected = true;
+                control.appendChild(empty);
+                (Array.isArray(field.options) ? field.options.slice(0, 8) : []).forEach(function (optionText) {
+                    if (typeof optionText !== 'string') { return; }
+                    var option = document.createElement('option');
+                    option.value = optionText;
+                    option.textContent = optionText;
+                    control.appendChild(option);
+                });
+                if (control.options.length < 3) { return; }
+            } else {
+                control = document.createElement('input');
+                control.type = field.type;
+                control.maxLength = 250;
+                if (field.type === 'number') { control.step = 'any'; }
+            }
+
+            control.name = field.name;
+            control.required = field.required === true;
+            control.autocomplete = 'off';
+            control.setAttribute('aria-label', field.label);
+            if (typeof field.placeholder === 'string') { control.placeholder = field.placeholder; }
+            label.appendChild(control);
+            leadForm.appendChild(label);
+            controls.push({ field: field, control: control });
+        });
+
+        if (controls.length < 2) { return; }
+        var button = document.createElement('button');
+        button.type = 'submit';
+        button.className = 'ayla-chat__intake-submit';
+        button.textContent = String(schema.submit_label || L('send'));
+        leadForm.appendChild(button);
+
+        leadForm.addEventListener('submit', function (event) {
+            event.preventDefault();
+            var lines = [String(schema.title || '')];
+            controls.forEach(function (item) {
+                var value = String(item.control.value || '').trim();
+                if (value) { lines.push(item.field.label + ': ' + value); }
+            });
+            if (lines.length < 2) { return; }
+            button.disabled = true;
+            send(lines.join('\n'));
+        });
+
+        message.appendChild(leadForm);
     }
 
     function render(items, whatsappUrl) {
@@ -252,7 +337,11 @@
         chooser = null;
         state.hasMessages = items.length > 0;
         updateNewButton();
-        items.forEach(function (item, index) { bubble(item.direction, item.body, { interactive: item.direction === 'out' && index === items.length - 1 }); });
+        items.forEach(function (item, index) {
+            var isLastOutgoing = item.direction === 'out' && index === items.length - 1;
+            var intakeForm = isLastOutgoing && item.meta && item.meta.intake_form ? item.meta.intake_form : null;
+            bubble(item.direction, item.body, { interactive: isLastOutgoing, intakeForm: intakeForm });
+        });
         lastWhatsApp = whatsappUrl || lastWhatsApp;
         if (lastWhatsApp) { var link = document.createElement('a'); link.className = 'ayla-chat__choice ayla-chat__choice--whatsapp'; link.href = lastWhatsApp; link.target = '_blank'; link.rel = 'noopener'; link.textContent = L('whatsapp'); messages.appendChild(link); }
         messages.scrollTop = messages.scrollHeight;
