@@ -201,6 +201,13 @@ class Ayla_Site_Sync {
 		return function_exists( 'dentacare_opt' ) ? (string) dentacare_opt( $key ) : '';
 	}
 
+	/** Where follow-up alerts go when the owner has not set a business email: the site's own administrator address. */
+	private static function notify_email() {
+		$email = sanitize_email( (string) get_option( 'admin_email' ) );
+
+		return is_email( $email ) ? $email : '';
+	}
+
 	private static function clinic() {
 		// Without the theme only safe, public basics are sent, and empty keys are left out so manual edits are kept.
 		if ( ! self::has_theme() ) {
@@ -209,15 +216,17 @@ class Ayla_Site_Sync {
 			if ( '' !== $about ) {
 				$out['about'] = $about;
 			}
+			$out['notify_email'] = self::notify_email();
 
 			return $out;
 		}
 
 		$out = array(
-			'address' => self::plain( self::opt( 'address' ), 500 ),
-			'phone'   => self::plain( self::opt( 'phone' ), 64 ),
-			'email'   => self::plain( self::opt( 'email' ), 160 ),
-			'map_url' => self::opt( 'map_url' ),
+			'address'      => self::plain( self::opt( 'address' ), 500 ),
+			'phone'        => self::plain( self::opt( 'phone' ), 64 ),
+			'email'        => self::plain( self::opt( 'email' ), 160 ),
+			'notify_email' => self::notify_email(),
+			'map_url'      => self::opt( 'map_url' ),
 		);
 
 		if ( function_exists( 'dentacare_clinic_hours' ) ) {
